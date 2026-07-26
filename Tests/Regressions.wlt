@@ -352,6 +352,24 @@ VerificationTest[
     TestID -> "regression-declare-shape-reset-clears-all"
 ]
 
+(* Substitution on a lazy container is scope-safe, not a plain ReplaceAll: a lazy
+   container can CARRY a bound-parameter form - the branch values of a Piecewise
+   built from the per-scalar expansion of a Function are arrays of unapplied
+   scalar Functions - and a plain ReplaceAll rewrote the parameter SPECIFICATION
+   into Function[0.37, ...], which the kernel rejects with Function::flpar and
+   from which there is no route back to a value.  The explicit tier already
+   routed a carried bound form through the registry; the lazy tier does too. *)
+VerificationTest[
+    With[{carrier = Piecewise[{{ArrayMaterialize[$fnM], zzM < 0}}, ConstantArray[0., {2, 2}]]},
+        {
+            ArrayLazyQ[carrier],
+            ArrayReplaceAll[carrier, {fnT4 -> 0.37, zzM -> -1.}] === $fnM[0.37]
+        }
+    ],
+    {True, True},
+    TestID -> "regression-lazy-substitution-applies-a-carried-bound-form"
+]
+
 (* No exported name may shadow a System` symbol.  The list of names is DERIVED
    from the loaded context rather than written out: a hardcoded list silently
    stops covering the export it was not updated for, which is how

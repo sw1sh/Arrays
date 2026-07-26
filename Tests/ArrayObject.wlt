@@ -127,7 +127,7 @@ BeginTestSection["arrayobject - properties"]
 
 VerificationTest[
     ArrayObject[$sparse]["Properties"],
-    {"ComputeNativeQ", "Data", "Dimensions", "ElementType", "Kind",
+    {"ComputeNativeQ", "Data", "Dimensions", "Domain", "ElementType", "Kind",
         "Normal", "NumberQ", "NumericQ", "Properties", "Rank", "Tier"},
     TestID -> "arrayobject-properties-list"
 ]

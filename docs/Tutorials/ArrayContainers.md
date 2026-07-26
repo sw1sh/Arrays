@@ -5,11 +5,11 @@ Title: Array Containers
 Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/tutorial/ArrayContainers
-Keywords: [array container, materialization, lazy array, symbolic array, packed array, capability flag]
+Keywords: [array container, materialization, lazy array, symbolic array, packed array, deferred tree, capability flag]
 RelatedGuides: [Arrays]
 ---
 
-The Wolfram Language stores arrays in many different containers: plain and packed lists, [SparseArray](), [NumericArray](), structured arrays, unit-carrying and tabular wrappers, interpolating functions awaiting a parameter, and purely symbolic array objects. The Arrays paclet treats them as one family under a single admission criterion: an expression is an array container when its shape is introspectable without materializing its elements and a materialization path exists. Containers fall into three tiers: explicit (the elements are in memory), lazy (an array-valued expression awaiting parameters) and symbolic (no elements at all, only a name and a shape). This note follows one small vector through four explicit containers, works the lazy and symbolic tiers end to end, and closes with the capability-flag model that separates admission from compute-nativeness.
+The Wolfram Language stores arrays in many different containers: plain and packed lists, [SparseArray](), [NumericArray](), structured arrays, unit-carrying and tabular wrappers, interpolating and parametric functions awaiting a parameter, unapplied functions, piecewise arrays, source neural nets, and purely symbolic array objects. The Arrays paclet treats them as one family under a single admission criterion: an expression is an array container when its shape is introspectable without materializing its elements and a materialization path exists. Containers fall into three tiers: explicit (the elements are in memory), lazy (an array-valued expression awaiting parameters) and symbolic (no elements at all, only a name and a shape). This note follows one small vector through four explicit containers, works the lazy and symbolic tiers end to end, and closes with the capability-flag model that separates admission from compute-nativeness.
 
 ## One Vector, Four Containers
 
@@ -184,7 +184,7 @@ ArrayExplicitValues[containers[[3]]]
 
 ## The Lazy Tier
 
-A lazy container is an array-valued expression with at least one non-numeric argument: the shape is known from the head, but the elements come into existence only when the parameters take numeric values. The canonical example is an array-valued [InterpolatingFunction]() applied to a symbolic time.
+A lazy container is an inert array-valued expression whose head is registered in the tier: the shape is known from the head, but the elements come into existence only when the expression is evaluated. The registered heads are an array-valued [InterpolatingFunction]() application, a fully applied [ParametricFunction](), an unapplied array-valued [Function](), an array-valued [Piecewise](), and a source [NetGraph]() or [NetChain](). The canonical example is an array-valued [InterpolatingFunction]() applied to a symbolic time.
 
 Solve a differential equation for a vector-valued function, giving an [InterpolatingFunction]() with vector output:
 
@@ -282,6 +282,91 @@ ArrayLazyQ[chopped]
 
 <!-- => True -->
 
+Each head brings its own shape route and its own materialization. An unapplied [Function]() is a container as it stands, since applying it would evaluate it:
+
+```wl
+rotation = Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[th]}}];
+ArrayLazyQ[rotation]
+```
+
+<!-- => True -->
+
+Its shape has no property to read, so it comes from a probe that applies the function once, at formal symbols:
+
+```wl
+ArrayDimensions[rotation]
+```
+
+<!-- => {2, 2} -->
+
+The parameter of a [Function]() is bound rather than free, so substituting it applies the function, one evaluation for the whole array:
+
+```wl
+ArrayReplaceAll[rotation, th -> 0.5]
+```
+
+<!-- => {{0.8775825618903728, -0.479425538604203}, {0.479425538604203, 0.8775825618903728}} -->
+
+Materializing instead gives an array of scalar functions of the same parameter, still unapplied:
+
+```wl
+ArrayMaterialize[rotation]
+```
+
+<!-- => {{Function[th, Cos[th]], Function[th, -Sin[th]]}, {Function[th, Sin[th]], Function[th, Cos[th]]}} -->
+
+Where the body defeats both probes, [ArrayDeclareShape]() supplies the shape and admits the function to the tier; it is consulted before the probes, so it also keeps them from evaluating the body:
+
+```wl
+branchy = Function[q, If[q > 2, {1., 2.}, $Failed]];
+ArrayDeclareShape[branchy, {2}];
+ArrayDimensions[branchy]
+```
+
+<!-- => {2} -->
+
+An array-valued [Piecewise]() survives evaluation while a condition is undecidable, and its shape is the common shape of its branch values and default:
+
+```wl
+pw = Piecewise[{{{{1., 2.}, {3., 4.}}, zz < 0}}, {{5., 6.}, {7., 8.}}];
+ArrayDimensions[pw]
+```
+
+<!-- => {2, 2} -->
+
+Substituting the condition variable collapses it to the branch that condition selects:
+
+```wl
+ArrayReplaceAll[pw, zz -> -1]
+```
+
+<!-- => {{1., 2.}, {3., 4.}} -->
+
+A source [NetGraph](), one with no open input ports, has an array value and a shape readable off its output port:
+
+```wl
+net = NetGraph[{NetArrayLayer["Array" -> {{1., 2., 3.}, {4., 5., 6.}}]}, {1 -> NetPort["Output"]}];
+ArrayDimensions[net]
+```
+
+<!-- => {2, 3} -->
+
+Materializing is the one call that runs the net:
+
+```wl
+ArrayMaterialize[net]
+```
+
+<!-- => {{1., 2., 3.}, {4., 5., 6.}} -->
+
+A net with an open input port is a function of that input rather than an array, and is not admitted:
+
+```wl
+ArrayContainerQ[NetGraph[{ElementwiseLayer[Tanh]}, {1 -> NetPort["Output"]}, "Input" -> 3]]
+```
+
+<!-- => False -->
+
 ## The Symbolic Tier
 
 A symbolic container has no elements: [VectorSymbol](), [MatrixSymbol]() and [ArraySymbol]() carry a name and declared dimensions, a plain symbol becomes symbolic by registering in [$Assumptions](), and structural trees of inactive transposes, tensor products, contractions and sums over such containers are containers themselves. Shape flows through the structure.
@@ -358,6 +443,50 @@ ArrayDimensions[a]
 ```
 
 <!-- => {2, 2} -->
+
+Membership in the tier is having a shape and no addressable elements, not having no value, and a structural tree over explicit arrays qualifies: it has a value and merely defers computing it. This is the form a tensor-network contraction returns unactivated:
+
+```wl
+tree = Inactive[TensorContract][
+    Inactive[TensorProduct][ArrayReshape[Range[6], {2, 3}], ArrayReshape[Range[12], {3, 4}]],
+    {{2, 3}}
+];
+ArraySymbolicQ[tree]
+```
+
+<!-- => True -->
+
+Shape flows through its nodes without computing anything:
+
+```wl
+ArrayDimensions[tree]
+```
+
+<!-- => {2, 4} -->
+
+Such a deferred tree does have a value, and [ArrayMaterialize]() computes it through [Activate]():
+
+```wl
+ArrayMaterialize[tree]
+```
+
+<!-- => {{38, 44, 50, 56}, {83, 98, 113, 128}} -->
+
+[ArrayPart]() addresses the elements of that array rather than the operands of the node:
+
+```wl
+ArrayPart[tree, {1}]
+```
+
+<!-- => {38, 44, 50, 56} -->
+
+Plain [Part]() reaches the expression tree instead, and hands back the inner node:
+
+```wl
+Part[tree, 1]
+```
+
+<!-- => Inactive[TensorProduct][{{1, 2, 3}, {4, 5, 6}}, {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}}] -->
 
 ## Capability Flags
 

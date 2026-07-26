@@ -5,7 +5,7 @@ Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/ref/ArrayNumberQ
 Keywords: [inexact numbers, machine numbers, numericity test, array container]
-SeeAlso: [ArrayNumericQ, ArrayAllZeroQ, ArrayExplicitQ, ArrayExplicitValues, ArrayPack, ArrayMaterialize]
+SeeAlso: [ArrayNumericQ, ArrayAllZeroQ, ArrayExplicitQ, ArrayExplicitValues, ArrayPack, ArrayMaterialize, ArrayElementDomain]
 RelatedGuides: [Arrays]
 ---
 

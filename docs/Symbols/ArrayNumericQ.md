@@ -5,7 +5,7 @@ Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/ref/ArrayNumericQ
 Keywords: [numeric array, numericity test, element type, array container]
-SeeAlso: [ArrayNumberQ, ArrayAllZeroQ, ArrayExplicitQ, ArrayExplicitValues, ArrayContainerQ, ArrayMaterialize, ArrayPack]
+SeeAlso: [ArrayNumberQ, ArrayAllZeroQ, ArrayExplicitQ, ArrayExplicitValues, ArrayContainerQ, ArrayMaterialize, ArrayPack, ArrayElementDomain]
 RelatedGuides: [Arrays]
 ---
 

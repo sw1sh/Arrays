@@ -5,7 +5,7 @@ Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/ref/ArrayContract
 Keywords: [tensor contraction, trace, tensor product, array container, symbolic array]
-SeeAlso: [ArrayTranspose, ArrayPart, SimplifyArray, ArrayDimensions, ArrayMaterialize, ArraySymbolicQ, ArrayContainerQ]
+SeeAlso: [ArrayTranspose, ArrayPart, SimplifyArray, ArrayDimensions, ArrayMaterialize, ArraySymbolicQ, ArrayContainerQ, ArrayUnify, ArrayTier]
 RelatedGuides: [Arrays]
 ---
 

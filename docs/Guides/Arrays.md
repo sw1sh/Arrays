@@ -11,26 +11,35 @@ Keywords: [array container, sparse array, packed array, numeric array, symbolic 
 
 ## Abstract
 
-The Arrays paclet treats the many array representations of the Wolfram Language as one family of containers under a single admission criterion: the shape must be introspectable without materializing the elements, and a materialization path must exist. Containers come in three tiers. The explicit tier holds its elements in memory: [SparseArray](), packed and plain [List]() arrays, [NumericArray](), structured arrays such as [SymmetrizedArray](), and shape-introspectable wrapper containers ([QuantityArray](), [TabularColumn](), [Tabular](), [Dataset](), [ByteArray](), [EventSeries]() and [DataStructure]() array stores). The lazy tier is an array-valued expression awaiting parameters, such as an array-valued [InterpolatingFunction]() applied to a symbolic time. The symbolic tier has no elements at all: [VectorSymbol](), [MatrixSymbol](), [ArraySymbol](), symbols registered in [$Assumptions](), and structural inactive trees over them. Whether a container also computes natively without materializing is a separate per-head capability flag, not an admission gate.
+The Arrays paclet treats the many array representations of the Wolfram Language as one family of containers under a single admission criterion: the shape must be introspectable without materializing the elements, and a materialization path must exist. Containers come in three tiers. The explicit tier holds its elements in memory: [SparseArray](), packed and plain [List]() arrays, [NumericArray](), structured arrays such as [SymmetrizedArray](), and shape-introspectable wrapper containers ([QuantityArray](), [TabularColumn](), [Tabular](), [Dataset](), [ByteArray](), [EventSeries]() and [DataStructure]() array stores). The lazy tier is an inert array-valued expression whose head is registered in the tier: an array-valued [InterpolatingFunction]() applied to a symbolic time, a fully applied [ParametricFunction](), an unapplied array-valued [Function](), an array-valued [Piecewise](), and a source [NetGraph]() or [NetChain](). The symbolic tier has a shape and no addressable elements: [VectorSymbol](), [MatrixSymbol](), [ArraySymbol](), symbols registered in [$Assumptions](), structural trees over them, and the deferred contraction tree a tensor-network contraction returns unactivated. Whether a container also computes natively without materializing is a separate per-head capability flag, not an admission gate. The tiers and the element domains are ordered lattices, so a set of containers of different kinds has a common representation: [ArrayTier]() and [ArrayElementDomain]() read the two coordinates, [ArrayUnify]() joins them over an operand set, and [ArrayCoerce]() moves a single container up either lattice.
 
 ## Functions
 
-### Tier predicates
+### Tiers and classification
 
 - `ArrayContainerQ` test whether an expression is a supported array container of any tier
+- `ArrayTier` the tier a container belongs to, `"Explicit"`, `"Lazy"` or `"Symbolic"`
 - `ArrayExplicitQ` test for an explicit container: `SparseArray`, packed or plain lists, `NumericArray`, structured arrays and shape-introspectable wrappers
-- `ArrayLazyQ` test for a lazy parametric container, an array-valued expression with a non-numeric argument
-- `ArraySymbolicQ` test for a symbolic container: array symbols, assumption-registered symbols and structural inactive trees
+- `ArrayLazyQ` test for a lazy container: an inert array-valued interpolating, parametric, function, piecewise or net expression
+- `ArraySymbolicQ` test for a symbolic container: array symbols, assumption-registered symbols, and symbolic or deferred structural trees
 - `ArrayComputeNativeQ` test whether an explicit container computes natively without materializing
 
-### Shape and element predicates
+### Shape and elements
 
 - `ArrayDimensions` the dimensions of a container of any tier, without materializing it
 - `ArrayRank` the number of dimensions of a container
+- `ArrayDeclareShape` declare the shape of a lazy container that no shape probe settles
 - `ZeroArrayQ` test whether any dimension of a container is zero
 - `ArrayNumericQ` test whether all elements of an explicit container are numeric
 - `ArrayNumberQ` test whether all elements of an explicit container are inexact numbers
 - `ArrayAllZeroQ` test whether every element of an explicit container is provably zero
+
+### Element types and coercion
+
+- `ArrayElementDomain` the element domain of a container, from `Integers` up to `Complexes`
+- `ArrayElementType` the concrete element type stored by a container that carries one
+- `ArrayUnify` the common tier, domain and element type of a set of containers, with the operands coerced to it
+- `ArrayCoerce` coerce a container up the tier and element lattices, refusing any move down them
 
 ### Stored values and materialization
 
@@ -55,7 +64,7 @@ The Arrays paclet treats the many array representations of the Wolfram Language 
 ### Higher-order operations
 
 - `ArrayMap` map a function over the elements of a container, preserving sparse structure and packing
-- `ArrayReplaceAll` apply replacement rules, evaluating a lazy container a single time
+- `ArrayReplaceAll` apply replacement rules, evaluating a lazy container a single time and applying a `Function` container rather than rewriting it
 
 ### Container handles
 

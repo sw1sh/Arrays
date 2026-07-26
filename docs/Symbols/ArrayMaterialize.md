@@ -4,8 +4,8 @@ Name: ArrayMaterialize
 Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/ref/ArrayMaterialize
-Keywords: [materialize, normal form, wrapper container, quantity magnitude, lazy expansion]
-SeeAlso: [ArrayPack, ArrayExplicitValues, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ, ArrayComputeNativeQ, ArrayReplaceAll, ArrayObject]
+Keywords: [materialize, normal form, wrapper container, quantity magnitude, lazy expansion, deferred tree]
+SeeAlso: [ArrayPack, ArrayExplicitValues, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ, ArrayComputeNativeQ, ArrayReplaceAll, ArrayDeclareShape, ArrayObject, ArrayCoerce]
 RelatedGuides: [Arrays]
 ---
 
@@ -21,11 +21,16 @@ RelatedGuides: [Arrays]
 - An [EventSeries]() materializes as [Normal]() of its `"Values"` column. The time index is separate metadata, recoverable for a rebuild from <code>*a*["Times"]</code>.
 - A [DataStructure]() array store (`"DynamicArray"` or `"FixedArray"`) materializes as an immediate packed snapshot of its elements: the handles have reference semantics, with copies aliasing the same store, so the snapshot is immune to later mutation of the source handle.
 - A lazy array-valued [InterpolatingFunction]() application expands per scalar: each component becomes its own scalar interpolating function applied to the parameter.
-- A symbolic container has no elements to materialize and gives the input itself.
+- An array-valued [Piecewise]() threads its branch structure through every position, giving an array of scalar [Piecewise]() expressions that carry the same conditions.
+- An unapplied [Function]() gives an array of scalar [Function]() expressions of the same parameters: the container is unapplied, so its elements are unapplied too. Where the body is an explicit array of the container shape the body is mapped over; where it is not, as for a shape declared with [ArrayDeclareShape](), each element wraps an [Indexed]() of the body instead.
+- A source [NetGraph]() or [NetChain]() materializes as <code>*net*[]</code>, the one call that evaluates it.
+- A lazy head with no per-scalar form, such as a [ParametricFunction](), expands through [Indexed](): every element is a scalar expression that substitutes to the right value, at the cost of one whole-array evaluation per element instead of one for the array.
+- A deferred structural tree, one whose leaves are all explicit containers, materializes through [Activate](), which is the computation it defers.
+- A leafless symbolic container has no elements to materialize and gives the input itself.
 
 ## Basic Examples
 
-<!-- #| annotation: 26.07.26: Design review - QuantityArray routes through QuantityMagnitude rather than Normal because Normal builds an unpacked array of Quantity expressions, orders of magnitude slower than handing back the internal packed magnitudes essentially for free; a named Tabular goes per column because Normal on it yields row Associations; EventSeries reads Normal of its "Values" column because the raw "Values" property returns a TabularColumn-backed view rather than a plain list. -->
+<!-- #| annotation: 26.07.26: Design review - QuantityArray routes through QuantityMagnitude rather than Normal because Normal builds an unpacked array of Quantity expressions, orders of magnitude slower than handing back the internal packed magnitudes essentially for free; a named Tabular goes per column because Normal on it yields row Associations; EventSeries reads Normal of its "Values" column because the raw "Values" property returns a TabularColumn-backed view rather than a plain list. A deferred tree is activated rather than handed back unchanged: returning the tree would make this the one tier whose materialization ArrayExplicitQ rejects, and would leave every materialize-then-operate fallback with nothing to fall back to. The Indexed expansion is the honest answer for a lazy head with no per-scalar form, trading one whole-array evaluation per element for correctness under substitution. -->
 
 Materialize a sparse matrix:
 
@@ -150,6 +155,62 @@ f[0.5]
 
 <!-- => {0.8775824340095093, -0.479425447892118} -->
 
+---
+
+An array-valued [Piecewise]() expands to an array of scalar [Piecewise]() expressions carrying the same condition:
+
+```wl
+ArrayMaterialize[Piecewise[{{{{1., 2.}, {3., 4.}}, zz < 0}}, {{5., 6.}, {7., 8.}}]]
+```
+
+<!-- => {{Piecewise[{{1., zz < 0}}, 5.], Piecewise[{{2., zz < 0}}, 6.]}, {Piecewise[{{3., zz < 0}}, 7.], Piecewise[{{4., zz < 0}}, 8.]}} -->
+
+---
+
+An unapplied [Function]() expands to an array of scalar [Function]() expressions of the same parameter:
+
+```wl
+ArrayMaterialize[Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[th]}}]]
+```
+
+<!-- => {{Function[th, Cos[th]], Function[th, -Sin[th]]}, {Function[th, Sin[th]], Function[th, Cos[th]]}} -->
+
+---
+
+Where the body is not an explicit array of the container shape, as for a shape declared with [ArrayDeclareShape](), each element indexes the body instead:
+
+```wl
+branchy = Function[q, If[q > 2, {1., 2.}, $Failed]];
+ArrayDeclareShape[branchy, {2}];
+ArrayMaterialize[branchy]
+```
+
+<!-- => {Function[q, Indexed[If[q > 2, {1., 2.}, $Failed], {1}]], Function[q, Indexed[If[q > 2, {1., 2.}, $Failed], {2}]]} -->
+
+---
+
+A source [NetGraph]() materializes by evaluating the net:
+
+```wl
+ArrayMaterialize[NetGraph[{NetArrayLayer["Array" -> {{1., 2., 3.}, {4., 5., 6.}}]}, {1 -> NetPort["Output"]}]]
+```
+
+<!-- => {{1., 2., 3.}, {4., 5., 6.}} -->
+
+---
+
+A deferred contraction tree over explicit matrices materializes to the value it defers:
+
+```wl
+tree = Inactive[TensorContract][
+    Inactive[TensorProduct][ArrayReshape[Range[6], {2, 3}], ArrayReshape[Range[12], {3, 4}]],
+    {{2, 3}}
+];
+ArrayMaterialize[tree]
+```
+
+<!-- => {{38, 44, 50, 56}, {83, 98, 113, 128}} -->
+
 ## Properties and Relations
 
 The `"UnitBlock"` metadata rebuilds a [QuantityArray]() around transformed magnitudes:
@@ -161,6 +222,26 @@ With[{qa = QuantityArray[{{1., 2.}, {3., 4.}}, "Seconds"]},
 ```
 
 <!-- => {{2., 4.}, {6., 8.}} -->
+
+---
+
+[Activate]() is the computation a deferred tree defers, and gives the array [ArrayMaterialize]() gives:
+
+```wl
+Activate[tree]
+```
+
+<!-- => {{38, 44, 50, 56}, {83, 98, 113, 128}} -->
+
+---
+
+A leafless symbolic tree has no value to compute, so it materializes to itself:
+
+```wl
+ArrayMaterialize[Inactive[TensorProduct][MatrixSymbol["A", {2, 3}], MatrixSymbol["B", {3, 4}]]]
+```
+
+<!-- => Inactive[TensorProduct][MatrixSymbol["A", {2, 3}], MatrixSymbol["B", {3, 4}]] -->
 
 ---
 

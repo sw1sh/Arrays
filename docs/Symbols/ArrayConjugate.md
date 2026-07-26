@@ -5,7 +5,7 @@ Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/ref/ArrayConjugate
 Keywords: [conjugate, complex conjugation, array container, symbolic array]
-SeeAlso: [ArrayTranspose, ArrayMap, ArrayReplaceAll, ArrayMaterialize, ArraySymbolicQ, ArrayContainerQ]
+SeeAlso: [ArrayTranspose, ArrayMap, ArrayReplaceAll, ArrayMaterialize, ArraySymbolicQ, ArrayContainerQ, ArrayLazyQ]
 RelatedGuides: [Arrays]
 ---
 
@@ -18,12 +18,13 @@ RelatedGuides: [Arrays]
 - Containers with a native [Conjugate]() are preserved: a [SparseArray]() stays sparse, a packed array stays packed, a structured array such as [SymmetrizedArray]() stays a structured atom, and a [QuantityArray]() keeps its wrapper.
 - [Conjugate]() is not natively supported on [NumericArray](), so a [NumericArray]() converts through [Normal]() and re-wraps, staying a [NumericArray]().
 - The storage wrappers ([Tabular](), [Dataset](), [EventSeries](), ...) conjugate their materialized data, losing the wrapper.
-- A lazy parametric container materializes to its per-scalar expansion before conjugating, so the result is no longer a lazy container.
+- A lazy container conjugates through its own head where that head has a rebuild, and stays lazy: an array-valued [InterpolatingFunction]() application conjugates its value grid, an unapplied [Function]() conjugates its body, and an array-valued [Piecewise]() conjugates its branch values.
+- A lazy head with no such rebuild, such as a [ParametricFunction](), materializes to its per-scalar expansion before conjugating, and the result is no longer a lazy container.
 - Symbolic containers stay in unevaluated [Conjugate]() form.
 
 ## Basic Examples
 
-<!-- #| annotation: 26.07.26: Design review - Routes to the container's native Conjugate wherever that preserves the head (SparseArray, packed arrays, SymmetrizedArray, QuantityArray); NumericArray round-trips through Normal because Conjugate does not support it natively. Lazy containers materialize per scalar rather than staying lazy: conjugation transforms values, unlike the shape-only ArrayTranspose and ReshapeArray, which keep the container lazy. -->
+<!-- #| annotation: 26.07.26: Design review - Routes to the container's native Conjugate wherever that preserves the head (SparseArray, packed arrays, SymmetrizedArray, QuantityArray); NumericArray round-trips through Normal because Conjugate does not support it natively. Conjugation transforms values rather than only shape, so a lazy container keeps its head exactly where that head can be rebuilt around transformed values; a head with no such rebuild materializes per scalar and the result is then no longer lazy. -->
 
 Conjugate a sparse vector; the container is preserved:
 
@@ -46,10 +47,10 @@ Normal[conjugated]
 A symbolic container stays in unevaluated [Conjugate]() form:
 
 ```wl
-ArrayConjugate[MatrixSymbol["C", {2, 2}, Complexes]]
+ArrayConjugate[MatrixSymbol["C", {2, 2}]]
 ```
 
-<!-- => Conjugate[MatrixSymbol["C", {2, 2}, Complexes]] -->
+<!-- => Conjugate[MatrixSymbol["C", {2, 2}]] -->
 
 ## Scope
 
@@ -121,16 +122,16 @@ ArrayConjugate[Tabular[{{1., 2.}, {3., 4.}}]]
 
 ### Lazy containers
 
-A lazy container materializes to its per-scalar expansion before conjugating:
+An array-valued [InterpolatingFunction]() application conjugates its value grid and stays a lazy container:
 
 ```wl
 if = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}];
 conjugated = ArrayConjugate[if[tau]]
 ```
 
-<!-- => {Conjugate[InterpolatingFunction[...][tau]], Conjugate[InterpolatingFunction[...][tau]]} -->
+<!-- => InterpolatingFunction[{{0., 1.}}, <>][tau], the conjugated interpolation -->
 
-Substituting the parameter evaluates the per-scalar interpolations:
+Substituting the parameter evaluates the conjugated interpolation:
 
 ```wl
 conjugated /. tau -> 0.5
@@ -146,12 +147,41 @@ Conjugate[if[0.5]]
 
 <!-- => {0.8775824340095093, -0.479425447892118} -->
 
-## Possible Issues
+---
 
-Unlike [ArrayTranspose]() and [ReshapeArray](), conjugating a lazy container does not stay lazy; the result is a plain list of conjugated scalar expressions:
+An unapplied [Function]() conjugates its body, keeping the parameter unbound:
 
 ```wl
-ArrayLazyQ[ArrayConjugate[if[tau]]]
+ArrayConjugate[Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[th]}}]]
 ```
 
-<!-- => False -->
+<!-- => Function[th, {{Conjugate[Cos[th]], -Conjugate[Sin[th]]}, {Conjugate[Sin[th]], Conjugate[Cos[th]]}}] -->
+
+---
+
+An array-valued [Piecewise]() conjugates its branch values, keeping its conditions:
+
+```wl
+ArrayConjugate[Piecewise[{{{{I, 2.}, {3., 4.}}, zz < 0}}, {{5., 6.}, {7., 8.}}]]
+```
+
+<!-- => Piecewise[{{{{-I, 2.}, {3., 4.}}, zz < 0}}, {{5., 6.}, {7., 8.}}] -->
+
+## Possible Issues
+
+A lazy head with no conjugating rebuild, such as a [ParametricFunction](), materializes to its per-scalar expansion first, and the conjugated result is no longer a lazy container:
+
+```wl
+pf = ParametricNDSolveValue[{y'[t] == {{0, pa}, {-pa, 0}} . y[t], y[0] == {1., 0.}}, y, {t, 0, 1}, {pa}];
+ArrayConjugate[pf[pa2][tt]]
+```
+
+<!-- => {Conjugate[Indexed[ParametricFunction[<>][pa2][tt], {1}]], Conjugate[Indexed[ParametricFunction[<>][pa2][tt], {2}]]} -->
+
+Binding both parameters still gives the conjugated array:
+
+```wl
+ArrayReplaceAll[ArrayConjugate[pf[pa2][tt]], {pa2 -> 1., tt -> 0.5}]
+```
+
+<!-- => {0.8775824340095093, -0.479425447892118} -->

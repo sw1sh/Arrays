@@ -37,6 +37,11 @@ PackageScope[lazyStructuralOp]
 PackageScope[lazyDeclarableQ]
 PackageScope[scopedReplaceAll]
 
+(* The explicit-to-lazy tier lift that ArrayCoerce in Types.wl performs.  It
+   lives here, beside the head it constructs, so that the no-other-file-names-a-
+   lazy-head rule above still holds. *)
+PackageScope[lazyConstant]
+
 
 ArrayDeclareShape::usage = "ArrayDeclareShape[f, dims] declares dims as the shape of the lazy container f, for the case where shape discovery has no probe or gets it wrong: it is the third step of the Function shape protocol and is consulted BEFORE the formal-symbol probe and the numeric probe, so it both corrects a probed shape and keeps the probes - which evaluate the body of f - from running at all.\nArrayDeclareShape[f] gives the declared shape of f, or Missing[\"NotDeclared\"].\nArrayDeclareShape[f, None] removes the declaration and the memoized probe result, so the shape of f is probed afresh.\nArrayDeclareShape[All, None] removes every declaration and every memoized probe result.\nOnly a lazy head that consults caller declarations accepts one; today that is an unapplied Function."
 
@@ -121,8 +126,18 @@ lazyMaterialize[expr_] := With[{handler = lazyHandler[expr, "Materialize"]},
 ]
 
 
+(* The default substitution is scope-safe, not a plain ReplaceAll: a lazy
+   container can CARRY a bound-parameter form - the branch values of a Piecewise
+   built from the per-scalar expansion of a Function are arrays of unapplied
+   scalar Functions - and rewriting one instead of applying it produces
+   Function[0.5, ...], with no route back to a value.  A container with no bound
+   form anywhere in it takes the plain path unchanged, on the FreeQ fast path of
+   scopedReplaceAll.  A head whose own inert form binds its parameters registers
+   "Substitute" and never reaches this, so the scan never re-enters here at top
+   level. *)
+
 lazySubstitute[expr_, rules_] := With[{handler = lazyHandler[expr, "Substitute"]},
-    If[MissingQ[handler], ReplaceAll[expr, rules], handler[expr, rules]]
+    If[MissingQ[handler], scopedReplaceAll[expr, rules], handler[expr, rules]]
 ]
 
 
@@ -601,6 +616,27 @@ RegisterLazyHead[Function, <|
     "BoundForm" -> True,
     "DeclarableQ" -> functionSupportedQ
 |>]
+
+
+(* The lift of an explicit array to the lazy tier: the constant Function of a
+   formal parameter, which is a lazy container of the same shape and whose
+   substitution, materialization and rebuild are the ones registered above.  The
+   parameter is the first formal variable the array does not already mention, so
+   an array that carries formal symbols of its own is not captured.  Apply is
+   what puts an evaluated array inside a HoldAll wrapper, exactly as
+   functionCurry does.
+
+   The body must satisfy ArrayQ, which is the shape protocol above, so a
+   container that does not - a NumericArray, a structured atom, a wrapper - is
+   materialized on the way in.  That is a move WITHIN the explicit tier, not the
+   downward tier move coercion refuses, and it carries the same cost as any
+   other ArrayMaterialize of an explicit container. *)
+
+lazyConstant[a_] := lazyConstantOf[If[ArrayQ[a], a, ArrayMaterialize[a]]]
+
+lazyConstantOf[a_] := With[{v = SelectFirst[$formalVariables, FreeQ[a, #] &, First[$formalVariables]]},
+    Function @@ {v, a}
+]
 
 
 (* === array-valued Piecewise ===

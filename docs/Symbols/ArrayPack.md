@@ -5,7 +5,7 @@ Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/ref/ArrayPack
 Keywords: [packed array, machine precision, type coercion, array container]
-SeeAlso: [ArrayMaterialize, ArrayExplicitQ, ArrayNumericQ, ArrayNumberQ, ArrayMap]
+SeeAlso: [ArrayMaterialize, ArrayExplicitQ, ArrayNumericQ, ArrayNumberQ, ArrayMap, ArrayElementType, ArrayCoerce]
 RelatedGuides: [Arrays]
 ---
 

@@ -5,7 +5,7 @@ Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/ref/ArrayObject
 Keywords: [array container, container handle, summary box, container kind, tier, introspection]
-SeeAlso: [ArrayObjectQ, ArrayContainerQ, ArrayDimensions, ArrayRank, ArrayMaterialize, ArrayComputeNativeQ, ArrayNumericQ]
+SeeAlso: [ArrayObjectQ, ArrayContainerQ, ArrayDimensions, ArrayRank, ArrayMaterialize, ArrayComputeNativeQ, ArrayNumericQ, ArrayTier, ArrayElementDomain, ArrayElementType]
 RelatedGuides: [Arrays]
 ---
 
@@ -31,6 +31,7 @@ RelatedGuides: [Arrays]
 | `"NumericQ"` | [ArrayNumericQ]() of the container |
 | `"NumberQ"` | [ArrayNumberQ]() of the container |
 | `"ElementType"` | the stored element type, where the container carries one |
+| `"Domain"` | [ArrayElementDomain]() of the container |
 | `"Normal"` | [ArrayMaterialize]() of the container |
 | `"Properties"` | the list of supported properties |
 
@@ -38,7 +39,8 @@ RelatedGuides: [Arrays]
 - An unknown property gives an `ArrayObject::noprop` message and stays unevaluated, and any number of arguments other than one property name gives an `ArrayObject::propx` message.
 - `"Kind"` names the head carrying the container: a [SparseArray]() gives `"SparseArray"`, an array-valued [InterpolatingFunction]() application gives `"InterpolatingFunction"`, and an inactive tree gives the operation, so an [Inactive]() [TensorProduct]() gives `"TensorProduct"`. A [List]() gives `"PackedArray"` or `"List"` according to its packing, and a symbol registered in [$Assumptions]() gives `"Symbol"`.
 - `"ElementType"` is given for the containers that store one, [NumericArray]() and [TabularColumn](); every other container gives `Missing["NotApplicable"]`.
-- The collapsed summary box shows the kind and the dimensions. Expanding it adds the tier, the compute-native flag, the two numericity flags, and the element type, or the unit for a [QuantityArray]().
+- `"Domain"` is the tier-independent description of the elements, from [Integers]() up to [Complexes](): a `"Real64"` [NumericArray]() and a [MatrixSymbol]() declared over [Reals]() both give [Reals](). A container whose domain is not known, including every lazy container, gives `Missing["NotApplicable"]`.
+- The collapsed summary box shows the kind and the dimensions. Expanding it adds the tier, the compute-native flag, the two numericity flags, and the element type where the container stores one or the element domain where it does not, plus the unit for a [QuantityArray]().
 - The summary box renders for lazy and symbolic containers without materializing them: it reads only the shape and classification tiers, so an [NDSolveValue]()-backed application and a [MatrixSymbol]() draw a full box with no elements computed.
 - Every function in the paclet takes an [ArrayObject]() wherever it takes a container, and gives the answer for the container it wraps. A result is never re-wrapped: [ArrayVector]() of a handle around a [SparseArray]() is a [SparseArray](), not another handle.
 - A handle nested inside a list argument is not unwrapped, so <code>[ArrayContract]()[{*a*, *obj*}, *pairs*]</code> can give its result in a different container form than the raw-container call would. Pass `"Data"` in a list.
@@ -46,7 +48,7 @@ RelatedGuides: [Arrays]
 
 ## Basic Examples
 
-<!-- #| annotation: 26.07.26: Design review - the object IS the wrapper expression: the head carries no constructor, only a rejection guard whose condition ends in False either way, so a container is left alone and anything else messages and stays unevaluated rather than yielding a half-formed object; the cost is that ArrayContainerQ runs on every evaluation instead of once at construction, bounded by ArrayQ on a plain nested List - O(n), and paid again on every property read and every render, which is the price of catching a handle whose container has stopped qualifying, since admission can lapse and a once-validated handle would go on reporting a shape it no longer has. Kind is derived by walking the head chain to the first Symbol rather than looked up in a table, so a head the classification tier admits later reports its own name instead of a stale label - "ParametricFunction", "Function" and "Piecewise" are unreachable Kinds today and cost nothing to keep reachable. Every exported function unwraps a handle at its entry point and returns a RAW container, never a rebuilt handle: "never rebuilt" settles the re-wrap question once for the whole surface, and it is what keeps the veneer thin, since no other kernel file mentions ArrayObject. The unwrapping clauses are not a convenience - the tier UpValues make a handle satisfy ArrayContainerQ and ArrayExplicitQ, the guards nearly every definition in the paclet is written against, so without them ArrayVector[obj] would match a_ ? ArrayExplicitQ and hand the wrapper straight to Flatten, a silent wrong answer rather than an inert expression. The box reads a QuantityArray unit through "UnitBlock", not QuantityUnit, which builds a full per-element array of units. Prior art: the kernel gives NumericArray, QuantityArray and InterpolatingFunction each their own summary box but no common handle across container heads, and Dataset wraps by converting the data it is given; this handle stores the container unchanged, is optional, and nothing else in the paclet depends on it. -->
+<!-- #| annotation: 26.07.26: Design review - the object IS the wrapper expression: the head carries no constructor, only a rejection guard whose condition ends in False either way, so a container is left alone and anything else messages and stays unevaluated rather than yielding a half-formed object; the cost is that ArrayContainerQ runs on every evaluation instead of once at construction, bounded by ArrayQ on a plain nested List - O(n), and paid again on every property read and every render, which is the price of catching a handle whose container has stopped qualifying, since admission can lapse and a once-validated handle would go on reporting a shape it no longer has. Kind is derived by walking the head chain to the first Symbol rather than looked up in a table, so a head the classification tier admits later reports its own name instead of a stale label - "ParametricFunction", "Function", "Piecewise", "NetGraph" and "NetChain" report themselves with no edit here. Every exported function unwraps a handle at its entry point and returns a RAW container, never a rebuilt handle: "never rebuilt" settles the re-wrap question once for the whole surface, and it is what keeps the veneer thin, since no other kernel file mentions ArrayObject. The unwrapping clauses are not a convenience - the tier UpValues make a handle satisfy ArrayContainerQ and ArrayExplicitQ, the guards nearly every definition in the paclet is written against, so without them ArrayVector[obj] would match a_ ? ArrayExplicitQ and hand the wrapper straight to Flatten, a silent wrong answer rather than an inert expression. The box reads a QuantityArray unit through "UnitBlock", not QuantityUnit, which builds a full per-element array of units. Prior art: the kernel gives NumericArray, QuantityArray and InterpolatingFunction each their own summary box but no common handle across container heads, and Dataset wraps by converting the data it is given; this handle stores the container unchanged, is optional, and nothing else in the paclet depends on it. -->
 
 A handle around a sparse matrix, formatted as a summary box:
 
@@ -94,7 +96,7 @@ The supported properties:
 ArrayObject[{1., 2.}]["Properties"]
 ```
 
-<!-- => {"ComputeNativeQ", "Data", "Dimensions", "ElementType", "Kind", "Normal", "NumberQ", "NumericQ", "Properties", "Rank", "Tier"} -->
+<!-- => {"ComputeNativeQ", "Data", "Dimensions", "Domain", "ElementType", "Kind", "Normal", "NumberQ", "NumericQ", "Properties", "Rank", "Tier"} -->
 
 ## Scope
 
@@ -339,6 +341,26 @@ ArrayObject[SparseArray[{1., 2.}]]["ElementType"]
 ```
 
 <!-- => Missing["NotApplicable"] -->
+
+---
+
+`"Domain"` answers for such a container, describing the elements without naming a storage type:
+
+```wl
+ArrayObject[SparseArray[{1., 2.}]]["Domain"]
+```
+
+<!-- => Reals -->
+
+---
+
+A symbolic container reports the domain it was declared over, in the same terms:
+
+```wl
+ArrayObject[MatrixSymbol["M", {2, 2}, Reals]]["Domain"]
+```
+
+<!-- => Reals -->
 
 ### Materialization
 

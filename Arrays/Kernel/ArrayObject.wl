@@ -104,27 +104,15 @@ arrayKind[_Symbol] := "Symbol"
 arrayKind[a_] := headKind[a]
 
 
-(* A container belongs to exactly one tier, and Which pins the probe order
-   independently of definition ordering. *)
-arrayTier[a_] := Which[ArrayExplicitQ[a], "Explicit", ArrayLazyQ[a], "Lazy", True, "Symbolic"]
-
-
-(* Element-type metadata, reported only where the container really carries one.
-   A QuantityArray carries a unit rather than an element type and gets its own
-   summary row; "UnitBlock" is the cheap accessor, while QuantityUnit builds a
-   full array of per-element units. *)
-
-arrayElementType[a_NumericArray] := NumericArrayType[a]
-
-arrayElementType[a_TabularColumn] := a["ElementType"]
-
-arrayElementType[___] := Missing["NotApplicable"]
+(* The tier and the element metadata are the type algebra's, not the handle's:
+   ArrayTier, ArrayElementType and ArrayElementDomain live in Types.wl, where
+   the lattices they order are defined, and the handle only reports them. *)
 
 
 (* === properties === *)
 
 $arrayObjectProperties = {
-    "ComputeNativeQ", "Data", "Dimensions", "ElementType", "Kind",
+    "ComputeNativeQ", "Data", "Dimensions", "Domain", "ElementType", "Kind",
     "Normal", "NumberQ", "NumericQ", "Properties", "Rank", "Tier"
 }
 
@@ -132,7 +120,7 @@ arrayObjectProperty[a_, "Data"] := a
 
 arrayObjectProperty[a_, "Kind"] := arrayKind[a]
 
-arrayObjectProperty[a_, "Tier"] := arrayTier[a]
+arrayObjectProperty[a_, "Tier"] := ArrayTier[a]
 
 arrayObjectProperty[a_, "Dimensions"] := ArrayDimensions[a]
 
@@ -144,7 +132,12 @@ arrayObjectProperty[a_, "NumericQ"] := ArrayNumericQ[a]
 
 arrayObjectProperty[a_, "NumberQ"] := ArrayNumberQ[a]
 
-arrayObjectProperty[a_, "ElementType"] := arrayElementType[a]
+arrayObjectProperty[a_, "ElementType"] := ArrayElementType[a]
+
+(* The domain is the element type's tier-independent counterpart: a symbolic
+   array over Reals and a "Real64" NumericArray describe their elements in the
+   same terms, which is what makes them joinable. *)
+arrayObjectProperty[a_, "Domain"] := ArrayElementDomain[a]
 
 (* "Normal" is the only property that materializes. *)
 arrayObjectProperty[a_, "Normal"] := ArrayMaterialize[a]
@@ -238,6 +231,19 @@ ArrayObject /: ZeroArrayQ[obj_ArrayObject ? ArrayObjectQ] := ZeroArrayQ[objectCo
 ArrayObject /: ArrayAllZeroQ[obj_ArrayObject ? ArrayObjectQ] := ArrayAllZeroQ[objectContainer[obj]]
 
 
+(* Type algebra.  ArrayUnify takes a LIST, and an UpValue reaches an argument
+   rather than an argument's parts, so a handle inside such a list is not
+   unwrapped here - pass obj["Data"], as for the list form of ArrayContract. *)
+
+ArrayObject /: ArrayTier[obj_ArrayObject] := objectData[ArrayTier, obj]
+
+ArrayObject /: ArrayElementDomain[obj_ArrayObject] := objectData[ArrayElementDomain, obj]
+
+ArrayObject /: ArrayElementType[obj_ArrayObject] := objectData[ArrayElementType, obj]
+
+ArrayObject /: ArrayCoerce[obj_ArrayObject, spec_] := objectData[ArrayCoerce[#, spec] &, obj]
+
+
 (* Shape and materialization. *)
 
 ArrayObject /: ArrayDimensions[obj_ArrayObject] := objectData[ArrayDimensions, obj]
@@ -308,10 +314,24 @@ $arrayObjectIcon = Graphics[
 ]
 
 
-arrayElementItems[a_QuantityArray] := {BoxForm`SummaryItem[{"unit: ", a["UnitBlock"]}]}
+(* The element row is the element TYPE where the container carries one and the
+   element DOMAIN where it does not, so that every container that has element
+   metadata at all shows it in terms the type algebra can join.  A QuantityArray
+   carries a unit rather than an element type and gets its own row too;
+   "UnitBlock" is the cheap accessor, while QuantityUnit builds a full array of
+   per-element units. *)
 
-arrayElementItems[a_] := With[{type = arrayElementType[a]},
-    If[MissingQ[type], {}, {BoxForm`SummaryItem[{"element type: ", type}]}]
+arrayDomainItems[a_] := With[{domain = ArrayElementDomain[a]},
+    If[MissingQ[domain], {}, {BoxForm`SummaryItem[{"domain: ", domain}]}]
+]
+
+arrayElementItems[a_QuantityArray] := Join[
+    {BoxForm`SummaryItem[{"unit: ", a["UnitBlock"]}]},
+    arrayDomainItems[a]
+]
+
+arrayElementItems[a_] := With[{type = ArrayElementType[a]},
+    If[MissingQ[type], arrayDomainItems[a], {BoxForm`SummaryItem[{"element type: ", type}]}]
 ]
 
 
@@ -338,7 +358,7 @@ ArrayObject /: MakeBoxes[obj : ArrayObject[a_], form : StandardForm | Traditiona
         },
         Join[
             {
-                BoxForm`SummaryItem[{"tier: ", arrayTier[a]}],
+                BoxForm`SummaryItem[{"tier: ", ArrayTier[a]}],
                 BoxForm`SummaryItem[{"compute native: ", ArrayComputeNativeQ[a]}],
                 BoxForm`SummaryItem[{"numeric: ", ArrayNumericQ[a]}],
                 BoxForm`SummaryItem[{"inexact: ", ArrayNumberQ[a]}]

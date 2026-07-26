@@ -14,6 +14,15 @@ PackageScope[setDimensions]
    whether a symbol has registered dimensions, so this probe is shared. *)
 PackageScope[assumptionDimensions]
 
+(* The element-domain half of the same $Assumptions entry, read by the element
+   lattice of Types.wl. *)
+PackageScope[assumptionDomain]
+
+(* The column element-type unwrapper, read by the element lattice of Types.wl
+   for the same TabularColumn and EventSeries metadata the numericity probes
+   below read. *)
+PackageScope[columnLeafType]
+
 
 ArrayDimensions::usage = "ArrayDimensions[a] gives the dimensions of an array container of any tier without materializing it, recursing structurally through Inactive[D], Transpose, Plus, Inactive[TensorProduct], TensorContract, ArrayContract, Dot, ArrayDot and ArrayReshape nodes in both their active and their inactive spelling; a node whose operand has no known shape, and non-array input including ragged lists, quietly give {}."
 
@@ -46,6 +55,20 @@ assumptionDimensions[s_Symbol] := FirstCase[
         s | Verbatim[Alternatives][___, s, ___] | {___, s, ___},
         (Vectors | Matrices | Arrays)[dims_, ___]
     ] :> dims,
+    Missing["NotFound"],
+    {1}
+]
+
+(* The domain of the same entry.  Vectors, Matrices and Arrays default to
+   Complexes and normalize the argument in, so an entry registered without a
+   domain reads back as Complexes either way; the Optional here covers the
+   spelling that has not been normalized. *)
+assumptionDomain[s_Symbol] := FirstCase[
+    assumptionElements[],
+    HoldPattern[Element][
+        s | Verbatim[Alternatives][___, s, ___] | {___, s, ___},
+        (Vectors | Matrices | Arrays)[_, domain_ : Complexes, ___]
+    ] :> domain,
     Missing["NotFound"],
     {1}
 ]

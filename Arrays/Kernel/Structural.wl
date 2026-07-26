@@ -11,7 +11,7 @@ PackageExport[ArrayConjugate]
 
 ArrayTranspose::usage = "ArrayTranspose[a, perm] transposes an array container by the given permutation, composing permutations of nested Transpose forms, and keeping symbolic containers in unevaluated form; a lazy container stays lazy where its head supplies a lazy-preserving rebuild (the value grid of an InterpolatingFunction, the branch values of a Piecewise, the body of a Function) and materializes through ArrayMaterialize where it does not, as for a ParametricFunction."
 
-ArrayContract::usage = "ArrayContract[a, pairs] contracts the given index pairs of an array container, keeping symbolic containers in inactive TensorContract form.\nArrayContract[{a1, a2, ...}, pairs] contracts index pairs of the inactive tensor product of the given containers; a plain List that is itself an array is treated as a single array, matching the SparseArray form."
+ArrayContract::usage = "ArrayContract[a, pairs] contracts the given index pairs of an array container, keeping symbolic containers in inactive TensorContract form; a lazy container contracts through its head's lazy-preserving rebuild and stays lazy, unless the contraction leaves no array at all.\nArrayContract[{a1, a2, ...}, pairs] contracts index pairs of the inactive tensor product of the given containers; a plain List that is itself an array is treated as a single array, matching the SparseArray form. The result is a container of the tier ArrayUnify joins the operands to: explicit operands contract through the tensor product, an operand set carrying a symbolic container gives a symbolic node, and one carrying exactly one lazy container and no symbolic one is contracted against the value grid, branch values or body of that operand and stays lazy where its head supplies a lazy-preserving rebuild. An operand set carrying SEVERAL lazy containers, and a contraction that leaves no array at all, have no lazy form between them: every lazy operand is expanded per scalar and the contraction is explicit, giving an array - or, for a full contraction, a scalar - of expressions that substitute to the contracted values."
 
 ArrayPart::usage = "ArrayPart[a, {i1, i2, ...}] gives the part of an array container at the given indices, slicing symbolic containers structurally and expanding a lazy container per scalar first, since Part on an inert lazy form reaches the expression tree rather than the array; a deferred structural tree, whose leaves are all explicit, is activated first for the same reason, and a structural tree that carries a symbolic container is left unevaluated rather than sliced wrongly; All entries keep the corresponding level."
 
@@ -98,12 +98,102 @@ ArrayTranspose[a_ ? ArrayLazyQ, perm_] :=
     lazyStructuralOp[Transpose[#, Replace[perm, m_ <-> n_ :> Cycles[{{m, n}}]]] &, a]
 
 
-(* A list is treated as a list of arrays only when its elements are containers
+(* === the mixing point ===
+
+   A list is treated as a list of arrays only when its elements are containers
    and at least one of them is not itself a List: a plain nested-List matrix is
    a single array and contracts the same way as its SparseArray form, while a
    list of SparseArray, lazy or symbolic containers is a tensor product.  This
-   clause comes before the generic one, which would otherwise match first. *)
-ArrayContract[arrays : {__ ? ArrayContainerQ}, c_] := ArrayContract[Inactive[TensorProduct] @@ arrays, c] /; ! AllTrue[arrays, ListQ]
+   clause comes before the generic one, which would otherwise match first.
+
+   The list is also the one place in the paclet where containers of DIFFERENT
+   kinds meet, so it dispatches on the tier join of its operands (arrayTierJoin
+   in Types.wl) rather than on whichever operand's form happens to survive
+   TensorContract.  Two of the three joins are the inactive tensor product
+   already: with every operand explicit the contraction computes through it, and
+   with at least one symbolic operand the whole node is a symbolic container,
+   lazy operands included.
+
+   A LAZY join is the case the tensor product cannot express - an
+   Inactive[TensorProduct] carrying a lazy operand and no symbolic one is not a
+   container at all, since admitting one would make classification evaluate a
+   lazy leaf - and it used to return that non-container.  It is lowered instead
+   to a UNARY operation on the lazy operand and goes through the head's
+   lazy-preserving rebuild, exactly as ArrayTranspose and ArrayConjugate do: the
+   explicit operands are contracted against the value grid of an
+   InterpolatingFunction, the branch values of a Piecewise or the body of a
+   Function, and the result stays lazy.  That lowering needs exactly ONE lazy
+   operand; with several, and with a contraction that leaves no array at all,
+   every lazy operand is expanded per scalar and the contraction is explicit -
+   the materialize-then-operate fallback every structural op has, taken over the
+   whole operand set at once rather than one operand at a time. *)
+
+lazyOperandPosition[arrays_List] := SelectFirst[Range[Length[arrays]], ArrayLazyQ[arrays[[#]]] &]
+
+lazyOperandCount[arrays_List] := Count[arrays, _ ? ArrayLazyQ]
+
+(* Each contracted level is dropped from the tensor product, so the rank of the
+   result is arithmetic on the operand ranks and needs no probe of the node. *)
+contractedRank[arrays_List, c_] := Total[Map[ArrayRank, arrays]] - Length[Flatten[c]]
+
+(* Every lazy operand replaced by its per-scalar expansion, which is an explicit
+   array of scalar expressions that substitute to the right values. *)
+expandedOperands[arrays_List] := Replace[arrays, a_ ? ArrayLazyQ :> ArrayMaterialize[a], {1}]
+
+(* EXACTLY ONE lazy operand is the case the rebuild can express: the explicit
+   operands are contracted against the value grid of an InterpolatingFunction,
+   the branch values of a Piecewise or the body of a Function, and the result
+   stays lazy.  The inner call is then an all-explicit contraction, so nothing
+   recurses back into this clause.
+
+   The result is NOT lifted back to the joined tier when the head has no rebuild
+   and lazyStructuralOp materialized: the only lift available is the constant
+   Function of Types.wl, whose parameter is a formal one that no operand
+   mentions, so the container it builds is lazy in a VESTIGIAL parameter -
+   binding the operand's own parameters then hands back a Function rather than
+   the contracted array, and the head decides which of the two a caller gets.
+   The materialized result is returned as it stands, which is the same
+   collapse-to-explicit that ArrayTranspose and ArrayMap already report for a
+   head with no rebuild, and the tier lattice allows: a result may be MORE
+   specific than the join. *)
+
+contractJoin[arrays_, c_] := With[{k = lazyOperandPosition[arrays]},
+    lazyStructuralOp[contractJoin[ReplacePart[arrays, k -> #], c] &, arrays[[k]]]
+] /; arrayTierJoin[arrays] === "Lazy" && lazyOperandCount[arrays] === 1 && contractedRank[arrays, c] > 0
+
+(* TWO OR MORE lazy operands have no single rebuild between them, and recursing
+   through the rebuilds one operand at a time is a SILENT WRONG ANSWER rather
+   than a fallback: the inner call returns a lazy container, every rebuild
+   requires an array and declines it, and lazyStructuralOp then contracts the
+   inert per-scalar expansion of the outer operand - closures, Indexed forms,
+   nested Piecewise - arithmetically, producing a container of the right tier
+   and shape whose values are not the contraction of anything.  Every lazy
+   operand is expanded per scalar instead, and the ONE contraction that follows
+   is over explicit arrays of scalar expressions, which substitute correctly
+   (ArrayReplaceAll routes a carried bound form through the registry).
+
+   A contraction that leaves NO array - a full contraction to a scalar - takes
+   the same route, for the mirror-image reason: there is no lazy container it
+   could be, since every rebuild requires an array.  It used to fall through to
+   the tensor-product clause, which for a lazy operand is an inactive node that
+   satisfies no classification predicate and that ArrayMaterialize cannot
+   resolve either; the per-scalar expansion at least gives a scalar expression
+   that substitutes to the right value. *)
+
+contractJoin[arrays_, c_] := ArrayContract[Inactive[TensorProduct] @@ expandedOperands[arrays], c] /;
+    arrayTierJoin[arrays] === "Lazy"
+
+contractJoin[arrays_, c_] := ArrayContract[Inactive[TensorProduct] @@ arrays, c]
+
+ArrayContract[arrays : {__ ? ArrayContainerQ}, c_] := contractJoin[arrays, c] /; ! AllTrue[arrays, ListQ]
+
+(* A single lazy container is the one-operand case of the same rule: its tier
+   join is its own tier, and TensorContract on an inert lazy form reaches the
+   expression TREE rather than the array, so it goes through the rebuild too - or,
+   for a full contraction to a scalar, through the per-scalar expansion, which is
+   the same route the mixed rank-0 case takes and for the same reason: an inert
+   lazy form handed to TensorContract is contracted as an expression tree. *)
+ArrayContract[a_ ? ArrayLazyQ, c_] := contractJoin[{a}, c]
 
 (* TensorContract does not evaluate on the wrapper heads, so they contract
    their materialized data instead of returning an inert wrapper. *)

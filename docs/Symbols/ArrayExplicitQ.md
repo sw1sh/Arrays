@@ -5,7 +5,7 @@ Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/ref/ArrayExplicitQ
 Keywords: [explicit array, array container, predicate, wrapper container, sparse array]
-SeeAlso: [ArrayContainerQ, ArrayLazyQ, ArraySymbolicQ, ArrayComputeNativeQ, ArrayMaterialize, ArrayExplicitValues, ArrayNumericQ]
+SeeAlso: [ArrayContainerQ, ArrayLazyQ, ArraySymbolicQ, ArrayComputeNativeQ, ArrayMaterialize, ArrayExplicitValues, ArrayNumericQ, ArrayTier]
 RelatedGuides: [Arrays]
 ---
 

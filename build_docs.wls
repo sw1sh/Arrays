@@ -47,13 +47,15 @@ subdir = <|
     "TechNote" -> {"Documentation", "English", "Tutorials"},
     "Overview" -> {"Documentation", "English", "Tutorials"},
     (* the paclet-repository submission notebook is not a documentation page:
-       it goes to the repository root, outside the paclet layout *)
+       it sits beside PacletInfo.wl rather than under Documentation *)
     "Paclet" -> {}
 |>
 
-(* the Paclet template's notebook is rooted at the repository, every doc page at
-   the paclet directory *)
-outRoot[tmpl_String] := If[tmpl === "Paclet", repoDir, pacletDir]
+(* every page, the definition notebook included, is rooted at the paclet
+   directory: the repository submission expects the definition notebook beside
+   PacletInfo.wl, and putting it there also lets the manifest panel resolve the
+   paclet from the notebook's own directory *)
+outRoot[_String] := pacletDir
 
 frontmatterTemplate[srcFile_String] := Block[{m},
     m = StringCases[Import[srcFile, "Text"],
@@ -75,23 +77,6 @@ pageAssignments[srcFile_String] := DeleteDuplicates @ StringCases[
 
 clearPageState[srcFile_String] := Quiet @ Remove @@ pageAssignments[srcFile]
 
-(* The definition notebook's paclet-manifest panel resolves the paclet directory
-   from the notebook's own directory by default, which here is the repository
-   root - one level above the paclet, so CheckDefinitionNotebook reports
-   PacletDirectoryInvalid2.  Point the panel at the paclet explicitly.  (The
-   frontmatter cannot: MarkdownToNotebook fills "PacletDirectory" from it but
-   always writes "PacletDirectoryType" -> "Notebook".) *)
-
-pointAtPaclet[nbFile_String] := Export[nbFile,
-    Get[nbFile] /. Cell[boxes_, "PacletDirectoryChooser", o___] :> Cell[boxes, "PacletDirectoryChooser",
-        Sequence @@ Replace[{o},
-            (TaggingRules -> tr_) :> (TaggingRules -> Join[
-                {"PacletDirectoryType" -> "Custom", "PacletDirectory" -> pacletDir},
-                DeleteCases[tr, ("PacletDirectoryType" | "PacletDirectory") -> _]]),
-            {1}]],
-    "NB"
-]
-
 buildDoc[srcFile_String] := Block[{tmpl, dir, out},
     If[ ! StringStartsQ[StringTrim @ Import[srcFile, "Text"], "---"],
         Print["  (skip ", FileNameTake[srcFile], ": no frontmatter)"];
@@ -106,7 +91,6 @@ buildDoc[srcFile_String] := Block[{tmpl, dir, out},
     Quiet @ CreateDirectory[dir, CreateIntermediateDirectories -> True];
     out = FileNameJoin[{dir, FileBaseName[srcFile] <> ".nb"}];
     mtn[srcFile, out];
-    If[tmpl === "Paclet", pointAtPaclet[out]];
     clearPageState[srcFile];
     Print["  ", FileNameTake[srcFile], " -> ", FileNameDrop[out, FileNameDepth[repoDir]]]
 ]
@@ -119,7 +103,11 @@ Scan[buildDoc, Sort @ FileNames["*.md", FileNameJoin[{repoDir, "docs"}], Infinit
    ExamplesInitializationSection is only collapsed into the Examples section at
    build time, so a page served raw would show a double section rule and fold
    the examples under "Examples Initialization". Build each page in place so
-   Examples render as their own section. *)
+   Examples render as their own section.
+
+   Guides are excluded: they carry no Examples section, so there is nothing for
+   the build to collapse, and the paclet-repository check requires the main
+   guide page to be submitted in authoring form. *)
 
 Print["running DocumentationBuild on generated notebooks"]
 
@@ -143,7 +131,10 @@ Scan[
             Print["  FAILED: ", FileNameDrop[nb, FileNameDepth[repoDir]], " -> ", Head[built]]
         ]
     ]],
-    Sort @ FileNames["*.nb", FileNameJoin[{pacletDir, "Documentation"}], Infinity]
+    Sort @ Join[
+        FileNames["*.nb", FileNameJoin[{pacletDir, "Documentation", "English", "ReferencePages"}], Infinity],
+        FileNames["*.nb", FileNameJoin[{pacletDir, "Documentation", "English", "Tutorials"}], Infinity]
+    ]
 ]
 
 If[failed > 0, Print["done with ", failed, " DocumentationBuild failure(s)"]; Exit[1]]

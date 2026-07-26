@@ -423,7 +423,7 @@ functionSlotFormQ[f_Function] := Length[f] === 1
 
 functionArity[f_Function] := If[
     functionSlotFormQ[f],
-    Max[1, Cases[f, Slot[n_Integer] :> n, {0, Infinity}]],
+    Max[1, Cases[f, Verbatim[Slot][n_Integer] :> n, {0, Infinity}]],
     Replace[Extract[f, 1, Hold], {Hold[l_List] :> Length[l], _ :> 1}]
 ]
 

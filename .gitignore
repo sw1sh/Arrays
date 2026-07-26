@@ -1,5 +1,7 @@
 .DS_Store
 *.mx
+*.paclet
 build/
 # Generated documentation notebooks (docs/*.md is the source of truth)
 Arrays/Documentation/
+Arrays/ResourceDefinition.nb

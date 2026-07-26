@@ -121,7 +121,7 @@ Through[{ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ}[MatrixSymbol["M", {2, 3}]]]
 
 ## Possible Issues
 
-`Association` is deliberately rejected: `Dimensions` and `Normal` report the entry multiset (the entry count and a list of rules), not the represented vector, so it has neither a faithful shape nor a faithful materialization:
+`Association` is rejected: `Dimensions` and `Normal` report the entry multiset (the entry count and a list of rules), not the represented vector, so it has neither a faithful shape nor a faithful materialization:
 
 ```wl
 ArrayContainerQ[<|1 -> 1.5, 2 -> 2.5, 5 -> -1.|>]

@@ -23,6 +23,8 @@ RelatedGuides: [Arrays]
 
 ## Basic Examples
 
+<!-- #| annotation: 26.07.26: Design review - Routes to the container's native Conjugate wherever that preserves the head (SparseArray, packed arrays, SymmetrizedArray, QuantityArray); NumericArray round-trips through Normal because Conjugate does not support it natively. Lazy containers materialize per scalar rather than staying lazy: conjugation transforms values, unlike the shape-only ArrayTranspose and ReshapeArray, which keep the container lazy. -->
+
 Conjugate a sparse vector; the container is preserved:
 
 ```wl
@@ -31,6 +33,8 @@ Head[conjugated]
 ```
 
 <!-- => SparseArray -->
+
+The elements are conjugated:
 
 ```wl
 Normal[conjugated]
@@ -81,6 +85,8 @@ Head[conjugated]
 
 <!-- => SymmetrizedArray -->
 
+The independent component is conjugated:
+
 ```wl
 Normal[conjugated]
 ```
@@ -128,7 +134,7 @@ Max[Abs[(conjugated /. tau -> 0.5) - Conjugate[if[0.5]]]] < 1*^-4
 
 ## Possible Issues
 
-Unlike [ArrayTranspose]() and [ReshapeArray](), conjugating a lazy container does not stay lazy — the result is a plain list of conjugated scalar expressions:
+Unlike [ArrayTranspose]() and [ReshapeArray](), conjugating a lazy container does not stay lazy; the result is a plain list of conjugated scalar expressions:
 
 ```wl
 ArrayLazyQ[ArrayConjugate[if[tau]]]

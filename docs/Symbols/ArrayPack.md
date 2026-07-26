@@ -15,13 +15,15 @@ RelatedGuides: [Arrays]
 
 ## Details & Options
 
-- [ArrayPack]() tries the plain, [Real]() and [Complex]() forms of <code>Developer\`ToPackedArray</code> in turn.
-- The coercing [Real]() and [Complex]() forms are accepted only when every value survives at machine precision, verified by a [SetPrecision]() round trip; exact values such as `1/3` or `2^200 + 1` are never silently destroyed.
+- [ArrayPack]() tries the plain, [Real]() and [Complex]() forms of `` Developer`ToPackedArray `` in turn.
+- The coercing [Real]() and [Complex]() forms are accepted only when every value survives at machine precision, verified by a [SetPrecision]() round trip; an array containing an exact value such as `1/3` or `2^200 + 1` is returned unchanged.
 - The [Complex]() fallback packs the mixed Integer/Complex lists that [Normal]() of a numeric [SparseArray]() with complex entries produces, which the plain form leaves unpacked.
 - A non-[List]() explicit container packs its [ArrayMaterialize]() data, which routes wrapper heads through their dedicated materialization paths: magnitudes for [QuantityArray](), per-column [Normal]() for a named [Tabular](), and so on; the packed result replaces the container only when packing succeeds.
-- Lazy and symbolic containers, and any list that fails the fidelity guard, are returned unchanged, so [ArrayPack]() is always safe to apply.
+- Lazy and symbolic containers, and any list that fails the machine-precision check, are returned unchanged.
 
 ## Basic Examples
+
+<!-- #| annotation: 26.07.26: Design review - Best-effort with a fidelity guard: coercing pack forms are accepted only when a SetPrecision round trip shows every value survives at machine precision, so exact values are never silently destroyed and ArrayPack is always safe to apply (anything unpackable comes back unchanged). The Complex fallback exists for the mixed Integer/Complex lists Normal of a complex SparseArray produces. -->
 
 Pack a mixed integer and real list:
 

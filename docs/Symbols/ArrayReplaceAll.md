@@ -17,11 +17,13 @@ RelatedGuides: [Arrays]
 
 - On a lazy container the whole expression is substituted at once, so substituting all parameters evaluates the array-valued function a single time and returns an explicit (typically packed) array.
 - On a [SparseArray]() the *rules* map over the explicit values and the implicit (background) value, preserving the [SparseArray]() container.
-- Structured atoms such as [SymmetrizedArray]() are substitution-opaque: plain [ReplaceAll]() returns the atom with its elements untouched, a silent no-op, so [ArrayReplaceAll]() materializes through [Normal]() first, densifying.
-- Wrapper containers ([QuantityArray](), [Tabular](), …) substitute on their materialized data for the same reason; for a [QuantityArray]() the *rules* see the magnitudes.
+- Structured atoms such as [SymmetrizedArray]() materialize through [Normal]() before substitution, densifying, so the *rules* reach the elements; plain [ReplaceAll]() returns the atom with its elements untouched.
+- Wrapper containers ([QuantityArray](), [Tabular](), …) substitute on their materialized data; for a [QuantityArray]() the *rules* see the magnitudes.
 - Any other container, including plain lists and symbolic containers, uses [ReplaceAll]() directly, so a rule can for example rename a [MatrixSymbol]().
 
 ## Basic Examples
+
+<!-- #| annotation: 26.07.26: Design review - Structured atoms are substitution-opaque: plain ReplaceAll returns a SymmetrizedArray atom with its elements untouched, a silent no-op, so ArrayReplaceAll materializes through Normal first; wrapper containers substitute on materialized data for the same reason. On a lazy container the whole expression is substituted at once so the array-valued function evaluates a single time, avoiding the per-scalar reinterpolation error of materializing first. -->
 
 An array-valued [NDSolveValue]() solution applied to a symbolic parameter is a lazy container:
 

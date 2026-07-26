@@ -23,6 +23,8 @@ RelatedGuides: [Arrays]
 
 ## Basic Examples
 
+<!-- #| annotation: 26.07.26: Design review - Structural-only simplifier: it removes exactly the trivial wrappers (empty contraction, singleton tensor product, identity transpose), in active and Inactive form, and returns anything else unchanged, so ArrayTranspose and ArrayContract can apply it to their results automatically without risk of rewriting nontrivial structure. -->
+
 Remove an identity transpose:
 
 ```wl

@@ -17,14 +17,15 @@ RelatedGuides: [Arrays]
 
 ## Details & Options
 
-- [PadArray]() is the paclet's name for this operation: the natural name `ArrayPad` is a System symbol, and paclet exports must not shadow built-in names, so the word order is reversed.
 - *spec* uses the [ArrayPad]() forms: an integer *n* pads with *n* elements on every side at every level, and <code>{{$m_1$, $n_1$}, …}</code> pads level $k$ with $m_k$ elements on the left and $n_k$ on the right.
 - Explicit containers pad through [ArrayPad](), preserving the container where [ArrayPad]() does: a [SparseArray]() stays sparse, with the zero and explicit-padding forms alike.
 - [ArrayPad]() does not support [NumericArray](), so a [NumericArray]() converts through [Normal]() and re-wraps, staying a [NumericArray]().
-- [ArrayPad]() on a [QuantityArray]() would degrade to a mixed list of [Quantity]() elements and plain padding, so every wrapper container — [QuantityArray]() included — pads its materialized data instead, losing the wrapper.
+- Wrapper containers, [QuantityArray]() included, pad their materialized data, losing the wrapper.
 - Lazy and symbolic containers are not padded; [PadArray]() stays unevaluated on them.
 
 ## Basic Examples
+
+<!-- #| annotation: 26.07.26: Design review - Named PadArray because the natural name ArrayPad is a System symbol and paclet exports must not shadow built-in names, so the word order is reversed. Wrapper containers pad materialized data: ArrayPad on a QuantityArray would degrade to a mixed list of Quantity elements and plain padding, so every wrapper, QuantityArray included, pads its materialized data and drops the wrapper instead. -->
 
 Pad a matrix with a border of zeros:
 
@@ -44,6 +45,8 @@ Head[padded]
 ```
 
 <!-- => SparseArray -->
+
+The zero border surrounds the original elements:
 
 ```wl
 Normal[padded]

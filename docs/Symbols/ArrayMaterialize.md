@@ -16,14 +16,16 @@ RelatedGuides: [Arrays]
 ## Details & Options
 
 - Explicit containers such as [SparseArray](), [NumericArray]() and structured arrays materialize via [Normal]().
-- A [QuantityArray]() materializes via [QuantityMagnitude](), which hands back the internal packed magnitudes essentially for free; [Normal]() would instead build an unpacked array of [Quantity]() expressions, orders of magnitude slower. Units are container metadata, recoverable for a rebuild from <code>*a*["UnitBlock"]</code>.
-- A named [Tabular]() materializes per column, since [Normal]() on a named [Tabular]() yields a list of row [Association]()s: each column materializes via [Normal]() to a packed vector and the columns recombine by [Transpose](). An anonymous all-numeric [Tabular]() already converts to a packed matrix via [Normal]().
-- An [EventSeries]() materializes as [Normal]() of its `"Values"` column, since the raw `"Values"` property returns a [TabularColumn]()-backed view rather than a plain list. The time index is separate metadata, recoverable for a rebuild from <code>*a*["Times"]</code>.
+- A [QuantityArray]() materializes via [QuantityMagnitude](), giving its packed magnitudes rather than the array of [Quantity]() expressions that [Normal]() builds. Units are container metadata, recoverable for a rebuild from <code>*a*["UnitBlock"]</code>.
+- A named [Tabular]() materializes per column: each column materializes via [Normal]() to a packed vector and the columns recombine by [Transpose](). An anonymous all-numeric [Tabular]() converts to a packed matrix via [Normal]().
+- An [EventSeries]() materializes as [Normal]() of its `"Values"` column. The time index is separate metadata, recoverable for a rebuild from <code>*a*["Times"]</code>.
 - A [DataStructure]() array store (`"DynamicArray"` or `"FixedArray"`) materializes as an immediate packed snapshot of its elements: the handles have reference semantics, with copies aliasing the same store, so the snapshot is immune to later mutation of the source handle.
 - A lazy array-valued [InterpolatingFunction]() application expands per scalar: each component becomes its own scalar interpolating function applied to the parameter.
 - A symbolic container has no elements to materialize and gives the input itself.
 
 ## Basic Examples
+
+<!-- #| annotation: 26.07.26: Design review - QuantityArray routes through QuantityMagnitude rather than Normal because Normal builds an unpacked array of Quantity expressions, orders of magnitude slower than handing back the internal packed magnitudes essentially for free; a named Tabular goes per column because Normal on it yields row Associations; EventSeries reads Normal of its "Values" column because the raw "Values" property returns a TabularColumn-backed view rather than a plain list. -->
 
 Materialize a sparse matrix:
 
@@ -184,7 +186,7 @@ Normal[Tabular[{{1., 2.}, {3., 4.}}, {"a", "b"}]]
 
 ---
 
-[DataStructure]() handles alias the same store, so the materialized snapshot is deliberately decoupled: mutating the source afterwards does not change it:
+[DataStructure]() handles alias the same store, but the materialized snapshot is decoupled: mutating the source afterwards does not change it:
 
 ```wl
 Module[{ds = CreateDataStructure["DynamicArray", {1., 2., 3.}], snapshot},

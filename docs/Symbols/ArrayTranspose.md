@@ -20,7 +20,7 @@ RelatedGuides: [Arrays]
 - Explicit containers with a native [Transpose]() keep their container: [SparseArray](), packed arrays, [NumericArray](), structured arrays such as [SymmetrizedArray](), and [QuantityArray]() all transpose without materializing.
 - The remaining wrapper containers ([Tabular](), [Dataset](), [EventSeries](), …) have no native [Transpose]() and transpose their materialized data, losing the wrapper.
 - Applied to a nested [Transpose]() form, active or [Inactive](), [ArrayTranspose]() composes the two permutations into a single [Transpose]() wrapper instead of stacking them.
-- A lazy parametric container — an array-valued [InterpolatingFunction]() applied to a symbolic parameter — transposes the value array at every grid point and reinterpolates, so the result stays lazy.
+- A lazy parametric container, an array-valued [InterpolatingFunction]() applied to a symbolic parameter, transposes the value array at every grid point and reinterpolates, so the result stays lazy.
 - Symbolic containers such as [MatrixSymbol]() stay in unevaluated [Transpose]() form, with trivial wrappers removed by [SimplifyArray]().
 - If any dimension of *a* is 0, the result is the empty array `{}`.
 

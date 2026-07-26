@@ -20,7 +20,7 @@ RelatedGuides: [Arrays]
 - *pairs* is a list of level pairs <code>{{$s_1$, $t_1$}, …}</code>, as in [TensorContract]().
 - Explicit compute-native containers contract through [TensorContract](), which evaluates immediately: contracting the two levels of a matrix gives its trace.
 - [TensorContract]() preserves [SymmetrizedArray]() structure natively, so contracting a structured atom stays a [SymmetrizedArray]().
-- [TensorContract]() does not evaluate on the wrapper heads, so wrapper containers — [QuantityArray]() included — contract their materialized data instead of returning an inert wrapper.
+- [TensorContract]() does not evaluate on the wrapper heads, so wrapper containers, [QuantityArray]() included, contract their materialized data instead of returning an inert wrapper.
 - Symbolic containers stay in inactive [TensorContract]() form; [ArrayDimensions]() reads the contracted shape off the wrapper without materializing.
 - In the list form, the containers are combined as an inactive [TensorProduct]() and the *pairs* index the concatenated levels; a plain [List]() that is itself an array is instead treated as a single array, matching its [SparseArray]() form.
 - An empty contraction <code>{}</code> gives *a* itself, via [SimplifyArray]().

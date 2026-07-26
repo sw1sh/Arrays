@@ -10,26 +10,24 @@ DataStructure array stores), lazy-parametric (array-valued inert applications su
 (`VectorSymbol` / `MatrixSymbol` / `ArraySymbol`, assumption-registered symbols,
 inactive tensor expression trees).
 
-Admission criterion: a container type is supported if its shape is introspectable
-without materializing and a materialization path exists. In-container compute support
-is a per-type capability, not a requirement - storage-only containers materialize
-before compute and re-wrap where a reconstruction path exists.
+A container type is supported if its shape is introspectable without materializing and
+a materialization path exists. In-container compute support is a per-type capability,
+not a requirement - storage-only containers materialize before compute and re-wrap
+where a reconstruction path exists.
 
 ## Layout
 
-The paclet is nested one level deep so this repository can be consumed as a git
-submodule:
-
 ```
-ArrayUtilities/            this repo
-    ArrayUtilities/        the paclet (PacletInfo.wl, Kernel/)
-    Tests/                 test suite + runner
+Arrays/            this repository
+    Arrays/        the paclet (PacletInfo.wl, Kernel/, Documentation/)
+    Tests/         test suite and runner
+    docs/          literate-markdown documentation sources
 ```
 
 Load the paclet from source:
 
 ```wolfram
-PacletDirectoryLoad["path/to/ArrayUtilities/ArrayUtilities"]
+PacletDirectoryLoad["path/to/Arrays/Arrays"]
 Needs["Wolfram`Arrays`"]
 ```
 
@@ -39,10 +37,8 @@ Run the tests:
 wolframscript -f Tests/RunTests.wls
 ```
 
-## Lineage
+Build the documentation:
 
-The symbolic tier and the `Array*` API shape follow
-`Wolfram`TensorNetworks`IndexArray`ArrayUtilities`; the flatten-to-vector fast path
-(`ArrayVector`) and lazy InterpolatingFunction handling originate in
-`Wolfram/QuantumFramework`, whose `QuantumState` container generalization is the
-primary consumer.
+```
+wolframscript -f build_docs.wls
+```

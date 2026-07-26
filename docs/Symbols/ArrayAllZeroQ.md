@@ -23,6 +23,8 @@ RelatedGuides: [Arrays]
 
 ## Basic Examples
 
+<!-- #| annotation: 26.07.26: Design review - Sound-but-conservative predicate: zeros are tested with TrueQ[x == 0], so exact and inexact zeros count while an unproven symbolic element gives False. Lazy and symbolic containers give False rather than staying unevaluated because a Q-predicate always returns True or False; an all-zero interpolation is therefore not detected without materializing. -->
+
 An empty sparse array is all zero without densifying:
 
 ```wl
@@ -31,6 +33,8 @@ ArrayAllZeroQ[SparseArray[{}, {2, 2}]]
 
 <!-- => True -->
 
+---
+
 A single nonzero element gives [False]():
 
 ```wl
@@ -38,6 +42,8 @@ ArrayAllZeroQ[{{0, 1}}]
 ```
 
 <!-- => False -->
+
+---
 
 Exact and inexact zeros both count:
 
@@ -99,14 +105,24 @@ ArrayAllZeroQ[ByteArray[{0, 0}]]
 
 ---
 
-Lazy and symbolic containers give [False]():
+A lazy container gives [False]() without materializing:
 
 ```wl
 f = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}];
-{ArrayAllZeroQ[f[tau]], ArrayAllZeroQ[MatrixSymbol["M", {2, 3}]]}
+ArrayAllZeroQ[f[tau]]
 ```
 
-<!-- => {False, False} -->
+<!-- => False -->
+
+---
+
+A symbolic container gives [False]():
+
+```wl
+ArrayAllZeroQ[MatrixSymbol["M", {2, 3}]]
+```
+
+<!-- => False -->
 
 ## Properties and Relations
 

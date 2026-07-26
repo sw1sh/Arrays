@@ -20,12 +20,14 @@ RelatedGuides: [Arrays]
 - The default level is `{-1}`; for a container of rank $r$ the element level is `{-1}` or `{r}`, and the *level* specification otherwise follows [Map]().
 - At element level a [SparseArray]() stays a [SparseArray](): *f* maps over the explicit values and is also applied to the implicit (background) value.
 - At any other level a [SparseArray]() densifies through [Normal]() before mapping.
-- A packed array repacks with the plain, non-coercing form of <code>Developer\`ToPackedArray</code>, so exact results such as `{1/2, 1, 3/2}` keep value parity with [Map]() instead of being coerced to machine reals.
+- A packed array repacks with the plain, non-coercing form of `` Developer`ToPackedArray ``, so exact results such as `{1/2, 1, 3/2}` keep value parity with [Map]() instead of being coerced to machine reals.
 - [NumericArray](), structured arrays such as [SymmetrizedArray]() and wrapper containers ([QuantityArray](), [Tabular](), …) map over their materialized data and give an explicit array; a [QuantityArray]() maps over its magnitudes, not over [Quantity]() elements.
 - At element level a lazy container maps *f* over its interpolation value grid and reinterpolates, staying lazy, provided *f* keeps the grid values numeric ([Chop](), [N](), [Abs](), …); otherwise [ArrayMap]() stays unevaluated.
 - At element level a symbolic container has no addressable elements, so *f* applies to the whole container, letting [Simplify]() and friends distribute over the symbolic tree; at other levels [ArrayMap]() stays unevaluated.
 
 ## Basic Examples
+
+<!-- #| annotation: 26.07.26: Design review - At element level the SparseArray implicit (background) value is mapped alongside the explicit values so the result keeps value parity with Map on the Normal form; repacking uses the plain, non-coercing Developer`ToPackedArray so exact results are not coerced to machine reals. Out-of-scope combinations (non-numeric f on a lazy grid, non-element level on a symbolic container) stay unevaluated. -->
 
 Map over a [SparseArray](), preserving the container:
 
@@ -158,17 +160,17 @@ A function that does not keep the value grid numeric leaves a lazy container une
 
 ```wl
 sol = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}];
-Head @ ArrayMap[f, sol[tau]]
+ArrayMap[f, sol[tau]]
 ```
 
-<!-- => ArrayMap -->
+<!-- => ArrayMap[f, InterpolatingFunction[...][tau]], the input unevaluated -->
 
 ---
 
 A symbolic container only supports mapping at the element level; other levels stay unevaluated:
 
 ```wl
-Head @ ArrayMap[f, MatrixSymbol["M", {2, 3}], {1}]
+ArrayMap[f, MatrixSymbol["M", {2, 3}], {1}]
 ```
 
-<!-- => ArrayMap -->
+<!-- => ArrayMap[f, MatrixSymbol["M", {2, 3}], {1}], the input unevaluated -->

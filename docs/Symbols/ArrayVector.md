@@ -16,12 +16,14 @@ RelatedGuides: [Arrays]
 ## Details & Options
 
 - Explicit containers flatten via [Flatten](), preserving the container where [Flatten]() does: a [SparseArray]() stays a [SparseArray](), a packed array stays packed, a [NumericArray]() stays a [NumericArray](), and a [QuantityArray]() or structured array keeps its wrapper.
-- A [SparseArray]() of rank above 11 flattens through a raw CSR construction instead, since [Flatten]() degrades at those ranks; the result is the same rank-1 [SparseArray]().
+- A [SparseArray]() of rank above 11 flattens through a raw CSR construction instead; the result is the same rank-1 [SparseArray]().
 - Storage wrappers without a native [Flatten]() ([Tabular](), [Dataset](), [ByteArray](), [EventSeries](), [DataStructure]() stores) flatten their [ArrayMaterialize]() data.
 - A lazy array-valued [InterpolatingFunction]() application of rank 1 is returned as-is; at higher rank the value grid is flattened and reinterpolated, so the container stays lazy.
 - Scalar numeric input passes through unchanged, so [ArrayVector]() can be applied uniformly to rank-0 data.
 
 ## Basic Examples
+
+<!-- #| annotation: 26.07.26: Design review - The rank>11 SparseArray path builds the rank-1 result from a raw CSR construction because Flatten's performance degrades badly at those ranks; both routes give the same rank-1 SparseArray, verified in Scope. -->
 
 Flatten a matrix to a vector:
 

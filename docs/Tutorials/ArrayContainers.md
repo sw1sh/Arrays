@@ -9,7 +9,7 @@ Keywords: [array container, materialization, lazy array, symbolic array, packed 
 RelatedGuides: [Arrays]
 ---
 
-The Wolfram Language stores arrays in many different containers: plain and packed lists, [SparseArray](), [NumericArray](), structured arrays, unit-carrying and tabular wrappers, interpolating functions awaiting a parameter, and purely symbolic array objects. The Arrays paclet treats them as one family under a single admission criterion: an expression is an array container when its shape is introspectable without materializing its elements and a materialization path exists. Containers fall into three tiers — explicit (the elements are in memory), lazy (an array-valued expression awaiting parameters) and symbolic (no elements at all, only a name and a shape). This note follows one small vector through four explicit containers, works the lazy and symbolic tiers end to end, and closes with the capability-flag model that separates admission from compute-nativeness.
+The Wolfram Language stores arrays in many different containers: plain and packed lists, [SparseArray](), [NumericArray](), structured arrays, unit-carrying and tabular wrappers, interpolating functions awaiting a parameter, and purely symbolic array objects. The Arrays paclet treats them as one family under a single admission criterion: an expression is an array container when its shape is introspectable without materializing its elements and a materialization path exists. Containers fall into three tiers: explicit (the elements are in memory), lazy (an array-valued expression awaiting parameters) and symbolic (no elements at all, only a name and a shape). This note follows one small vector through four explicit containers, works the lazy and symbolic tiers end to end, and closes with the capability-flag model that separates admission from compute-nativeness.
 
 ## One Vector, Four Containers
 
@@ -46,7 +46,7 @@ ArrayMaterialize /@ containers
 
 <!-- => {{1., 0., 2., 0.}, {1., 0., 2., 0.}, {1., 0., 2., 0.}, {1., 0., 2., 0.}} -->
 
-The materialization routes are per-head: for a [QuantityArray]() the route is [QuantityMagnitude](), which hands back the internal packed magnitudes essentially for free, with the units recoverable from the container metadata. Applying [Normal]() instead builds an unpacked list of [Quantity]() elements, orders of magnitude slower on large arrays:
+The materialization routes are per-head: for a [QuantityArray]() the route is [QuantityMagnitude](), which returns the internal packed magnitudes without conversion, with the units recoverable from the container metadata. Applying [Normal]() instead builds an unpacked list of [Quantity]() elements, orders of magnitude slower on large arrays:
 
 ```wl
 Normal[containers[[4]]]
@@ -62,7 +62,7 @@ The sparse accessors report the stored values, their positions and their count n
 
 <!-- => {{1., 2.}, {{1}, {3}}, 2} -->
 
-The same accessors extend to every other explicit container through an on-demand sparse wrap — here the nonzero values of the [NumericArray]():
+The same accessors extend to every other explicit container through an on-demand sparse wrap; here the nonzero values of the [NumericArray]():
 
 ```wl
 ArrayExplicitValues[containers[[3]]]
@@ -131,7 +131,7 @@ Table[ArrayReplaceAll[state, tau -> t1], {t1, 0., 1., 0.5}]
 
 <!-- => {{1., 0.}, {0.877582, -0.479425}, {0.540302, -0.841471}} -->
 
-Structural operations keep the container lazy — an element-level [ArrayMap]() with a numeric-valued function reinterpolates the value grid instead of materializing:
+Structural operations keep the container lazy: an element-level [ArrayMap]() with a numeric-valued function reinterpolates the value grid instead of materializing:
 
 ```wl
 ArrayLazyQ[ArrayMap[Chop, state]]
@@ -195,7 +195,7 @@ $Assumptions = {Element[a, Matrices[{2, 2}]]};
 
 ## Capability Flags
 
-Admission to the container family is shape-based; whether elementwise arithmetic and [Dot]() also run natively on the container without materializing is a separate per-head capability flag, [ArrayComputeNativeQ](). [SparseArray](), packed and plain lists, [QuantityArray]() and [TabularColumn]() are compute-native; [NumericArray](), structured arrays and the remaining wrapper containers ([Tabular](), [Dataset](), [ByteArray](), [EventSeries](), [DataStructure]() stores) are storage-only, as are all lazy and symbolic containers. [Association]() is deliberately not admitted at all: its [Dimensions]() and [Normal]() report the entry multiset rather than the represented vector, so it has neither a faithful shape nor a faithful materialization.
+Admission to the container family is shape-based; whether elementwise arithmetic and [Dot]() also run natively on the container without materializing is a separate per-head capability flag, [ArrayComputeNativeQ](). [SparseArray](), packed and plain lists, [QuantityArray]() and [TabularColumn]() are compute-native; [NumericArray](), structured arrays and the remaining wrapper containers ([Tabular](), [Dataset](), [ByteArray](), [EventSeries](), [DataStructure]() stores) are storage-only, as are all lazy and symbolic containers. [Association]() is not admitted: its [Dimensions]() and [Normal]() report the entry multiset rather than the represented vector, so it has neither a faithful shape nor a faithful materialization.
 
 Of the four explicit containers above, only the [NumericArray]() is storage-only:
 
@@ -205,7 +205,7 @@ ArrayComputeNativeQ /@ containers
 
 <!-- => {True, True, False, True} -->
 
-Operations on a storage-only container materialize first — mapping over the [NumericArray]() yields a plain packed list:
+Operations on a storage-only container materialize first; mapping over the [NumericArray]() yields a plain packed list:
 
 ```wl
 ArrayMap[2 # &, containers[[3]]]
@@ -213,7 +213,7 @@ ArrayMap[2 # &, containers[[3]]]
 
 <!-- => {2., 0., 4., 0.} -->
 
-Where a native route exists, the container head is preserved — conjugation converts through [Normal]() and re-wraps the [NumericArray]():
+Where a native route exists, the container head is preserved; conjugation converts through [Normal]() and re-wraps the [NumericArray]():
 
 ```wl
 Head[ArrayConjugate[containers[[3]]]]
@@ -221,4 +221,4 @@ Head[ArrayConjugate[containers[[3]]]]
 
 <!-- => NumericArray -->
 
-The flag lets callers choose their route: compute in place on native containers, or materialize once and compute on the packed data — while every container, native or not, answers the classification, shape and accessor questions without materializing.
+The flag lets callers choose their route: compute in place on native containers, or materialize once and compute on the packed data. Every container, native or not, answers the classification, shape and accessor questions without materializing.

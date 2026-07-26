@@ -16,7 +16,7 @@ RelatedGuides: [Arrays]
 ## Details & Options
 
 - Elements are tested with [InexactNumberQ]() semantics: machine or arbitrary-precision [Real]() and [Complex]() numbers pass; exact values (integers, rationals, exact constants such as `Pi`) give [False]().
-- The exact-fails rule lets consumers that branch exact-vs-numeric keep exact input on the exact path; [ArrayNumericQ]() is the looser test that accepts exact numeric values.
+- [ArrayNumericQ]() is the looser test that accepts exact numeric values.
 - For a [SparseArray]() only the explicitly stored values are tested; the implicit value is not inspected.
 - [Real]() and [Complex]() packed arrays and [NumericArray]() objects are inexact by construction; [Integer]()-typed ones give [False](), as does [ByteArray](), which is unsigned 8-bit integer typed.
 - A [QuantityArray]() is judged on its magnitudes, so integer-magnitude quantity arrays stay on the exact path like any other integer container.
@@ -24,9 +24,10 @@ RelatedGuides: [Arrays]
 - A [Dataset]() reads inexactness off its stored type signature without traversing the data.
 - An [EventSeries]() materializes its values and inspects them; a [DataStructure]() store is untyped, so its elements are inspected.
 - Lazy and symbolic containers give [False](), as does any other input.
-- [ArrayNumberQ]() mirrors the QuantumFramework `"NumberQ"` state property it replaces.
 
 ## Basic Examples
+
+<!-- #| annotation: 26.07.26: Design review - ArrayNumberQ replaces the QuantumFramework "NumberQ" state property; the exact-fails rule (InexactNumberQ semantics, exact values give False) lets consumers that branch exact-vs-numeric keep exact input on the exact path, with ArrayNumericQ as the looser exact-accepting test. -->
 
 Exact numeric values give [False]():
 

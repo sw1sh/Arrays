@@ -80,7 +80,7 @@ ArrayExplicitLength[f[tau]]
 
 ## Properties and Relations
 
-[ArrayExplicitLength]() counts the values of [ArrayExplicitValues]() and the positions of [ArrayExplicitPositions]():
+[ArrayExplicitLength]() counts the values of [ArrayExplicitValues]():
 
 ```wl
 ArrayExplicitLength[{{0, 1}, {2, 0}}] === Length[ArrayExplicitValues[{{0, 1}, {2, 0}}]]

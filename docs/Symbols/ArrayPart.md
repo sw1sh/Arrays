@@ -65,6 +65,8 @@ Head[row]
 
 <!-- => SparseArray -->
 
+Its elements are those of the first row:
+
 ```wl
 Normal[row]
 ```

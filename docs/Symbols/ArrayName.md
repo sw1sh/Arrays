@@ -21,6 +21,8 @@ RelatedGuides: [Arrays]
 
 ## Basic Examples
 
+<!-- #| annotation: 26.07.26: Design review - Total accessor over containers: non-symbolic input gives None rather than staying unevaluated, so callers can branch on the result. An atomic symbol gives itself without testing $Assumptions membership, which keeps assumption-registered arrays working with no extra lookup at the cost of also naming unregistered symbols. -->
+
 The name of a symbolic matrix:
 
 ```wl

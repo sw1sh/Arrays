@@ -17,7 +17,7 @@ RelatedGuides: [Arrays]
 
 - Containers with a native [Conjugate]() are preserved: a [SparseArray]() stays sparse, a packed array stays packed, a structured array such as [SymmetrizedArray]() stays a structured atom, and a [QuantityArray]() keeps its wrapper.
 - [Conjugate]() is not natively supported on [NumericArray](), so a [NumericArray]() converts through [Normal]() and re-wraps, staying a [NumericArray]().
-- The storage wrappers ([Tabular](), [Dataset](), [EventSeries](), …) conjugate their materialized data, losing the wrapper.
+- The storage wrappers ([Tabular](), [Dataset](), [EventSeries](), ...) conjugate their materialized data, losing the wrapper.
 - A lazy parametric container materializes to its per-scalar expansion before conjugating, so the result is no longer a lazy container.
 - Symbolic containers stay in unevaluated [Conjugate]() form.
 
@@ -28,11 +28,10 @@ RelatedGuides: [Arrays]
 Conjugate a sparse vector; the container is preserved:
 
 ```wl
-conjugated = ArrayConjugate[SparseArray[{1 -> I, 2 -> 2}, 3]];
-Head[conjugated]
+conjugated = ArrayConjugate[SparseArray[{1 -> I, 2 -> 2}, 3]]
 ```
 
-<!-- => SparseArray -->
+<!-- => a SparseArray summary box: rank 1, dimensions {3}, 2 stored elements -->
 
 The elements are conjugated:
 
@@ -69,21 +68,28 @@ ArrayConjugate[Developer`ToPackedArray[{1. + 2. I, 3. - 1. I}]]
 A [NumericArray]() converts through [Normal]() and re-wraps:
 
 ```wl
-Head[ArrayConjugate[NumericArray[{{1., 0.}, {0., 2.}}]]]
+conjugatedNumeric = ArrayConjugate[NumericArray[{{1., 0.}, {0., 2.}}]]
 ```
 
-<!-- => NumericArray -->
+<!-- => a NumericArray summary box: Real64, dimensions {2, 2} -->
+
+Its real elements are unchanged by conjugation:
+
+```wl
+Normal[conjugatedNumeric]
+```
+
+<!-- => {{1., 0.}, {0., 2.}} -->
 
 ---
 
 A [SymmetrizedArray]() conjugates natively and keeps the structured atom:
 
 ```wl
-conjugated = ArrayConjugate[SymmetrizedArray[{{1, 2} -> 3. I}, {2, 2}, Antisymmetric[{1, 2}]]];
-Head[conjugated]
+conjugated = ArrayConjugate[SymmetrizedArray[{{1, 2} -> 3. I}, {2, 2}, Antisymmetric[{1, 2}]]]
 ```
 
-<!-- => SymmetrizedArray -->
+<!-- => a SymmetrizedArray summary box: dimensions {2, 2}, Antisymmetric[{1, 2}] symmetry, 1 rule -->
 
 The independent component is conjugated:
 
@@ -98,10 +104,10 @@ Normal[conjugated]
 A [QuantityArray]() conjugates natively and keeps its wrapper:
 
 ```wl
-Head[ArrayConjugate[QuantityArray[{{1., 2.}, {3., 4.}}, "Meters"]]]
+ArrayConjugate[QuantityArray[{{1., 2.}, {3., 4.}}, "Meters"]]
 ```
 
-<!-- => QuantityArray -->
+<!-- => a QuantityArray summary box: dimensions {2, 2}, unit meters -->
 
 ---
 

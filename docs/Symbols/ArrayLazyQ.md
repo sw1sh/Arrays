@@ -42,13 +42,23 @@ ArrayLazyQ[v[tau]]
 
 <!-- => True -->
 
-Applied to a numeric argument, it evaluates to an explicit array instead:
+Applied to a numeric argument, the expression is no longer lazy:
 
 ```wl
-{ArrayLazyQ[v[0.5]], ArrayExplicitQ[v[0.5]]}
+ArrayLazyQ[v[0.5]]
 ```
 
-<!-- => {False, True} -->
+<!-- => False -->
+
+---
+
+It has evaluated to an explicit array instead:
+
+```wl
+ArrayExplicitQ[v[0.5]]
+```
+
+<!-- => True -->
 
 ## Scope
 
@@ -94,25 +104,23 @@ ArrayLazyQ[ArrayTranspose[m[tau], {2, 1}]]
 
 ## Properties and Relations
 
-[ArrayReplaceAll]() substitutes the whole expression at once, evaluating the array-valued function a single time and yielding a packed array:
+[ArrayReplaceAll]() substitutes the whole expression at once, evaluating the array-valued function a single time:
 
 ```wl
-With[{s = ArrayReplaceAll[v[tau], tau -> 0.5]},
-    {Developer`PackedArrayQ[s], s == v[0.5]}
-]
+ArrayReplaceAll[v[tau], tau -> 0.5]
 ```
 
-<!-- => {True, True} -->
+<!-- => {0.8775824340095093, -0.479425447892118} -->
 
 ---
 
-A lazy container has no explicitly stored values:
+The result agrees with applying the interpolating function to the same numeric argument directly:
 
 ```wl
-ArrayExplicitValues[v[tau]]
+v[0.5]
 ```
 
-<!-- => Missing["NotExplicit"] -->
+<!-- => {0.8775824340095093, -0.479425447892118} -->
 
 ---
 
@@ -123,3 +131,13 @@ ArrayComputeNativeQ[v[tau]]
 ```
 
 <!-- => False -->
+
+## Possible Issues
+
+A lazy container stores no elements, so the stored-value accessors decline to answer:
+
+```wl
+ArrayExplicitValues[v[tau]]
+```
+
+<!-- => Missing["NotExplicit"] -->

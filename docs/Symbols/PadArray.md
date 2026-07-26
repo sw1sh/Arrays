@@ -17,7 +17,7 @@ RelatedGuides: [Arrays]
 
 ## Details & Options
 
-- *spec* uses the [ArrayPad]() forms: an integer *n* pads with *n* elements on every side at every level, and <code>{{$m_1$, $n_1$}, …}</code> pads level $k$ with $m_k$ elements on the left and $n_k$ on the right.
+- *spec* uses the [ArrayPad]() forms: an integer *n* pads with *n* elements on every side at every level, and <code>{{$m_1$, $n_1$}, ...}</code> pads level $k$ with $m_k$ elements on the left and $n_k$ on the right.
 - Explicit containers pad through [ArrayPad](), preserving the container where [ArrayPad]() does: a [SparseArray]() stays sparse, with the zero and explicit-padding forms alike.
 - [ArrayPad]() does not support [NumericArray](), so a [NumericArray]() converts through [Normal]() and re-wraps, staying a [NumericArray]().
 - Wrapper containers, [QuantityArray]() included, pad their materialized data, losing the wrapper.
@@ -40,11 +40,10 @@ PadArray[{{1}}, 1]
 A [SparseArray]() stays sparse:
 
 ```wl
-padded = PadArray[SparseArray[{{0, 1}, {2, 0}}], 1];
-Head[padded]
+padded = PadArray[SparseArray[{{0, 1}, {2, 0}}], 1]
 ```
 
-<!-- => SparseArray -->
+<!-- => a SparseArray summary box: rank 2, dimensions {4, 4}, 2 stored elements -->
 
 The zero border surrounds the original elements:
 

@@ -114,10 +114,10 @@ ArrayPack[{{a1, a2}, {a3, a4}}]
 An integer too large for a machine integer would not survive coercion, so the exact-value guard leaves the list unchanged:
 
 ```wl
-ArrayPack[{1, 2^200 + 1}] === {1, 2^200 + 1}
+ArrayPack[{1, 2^200 + 1}]
 ```
 
-<!-- => True -->
+<!-- => {1, 1606938044258990275541962092341162602522202993782792835301377} -->
 
 ---
 
@@ -131,10 +131,10 @@ ArrayPack[{1/3, 0.5}]
 
 ---
 
-Packing a [SparseArray]() trades the sparse container for a packed dense array; for large sparse data keep the container and use [ArrayExplicitValues]() instead:
+Packing a [SparseArray]() trades the sparse container for a packed dense array in which every implicit zero is stored; for large sparse data keep the container and use [ArrayExplicitValues]() instead:
 
 ```wl
-Head[ArrayPack[SparseArray[{1 -> 1, 2 -> I}, 3]]]
+ArrayPack[SparseArray[{1 -> 1., 5 -> 2.}, 10]]
 ```
 
-<!-- => List -->
+<!-- => {1., 0., 0., 0., 2., 0., 0., 0., 0., 0.} (packed Real array) -->

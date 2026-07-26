@@ -17,7 +17,7 @@ PacletObject[
         "Context" -> {
           {
             "Wolfram`Arrays`",
-            "Arrays.wl"
+            "Classification.wl"
           }
         },
         "Symbols" -> {
@@ -37,6 +37,8 @@ PacletObject[
           "Wolfram`Arrays`ArrayName",
           "Wolfram`Arrays`ArrayNumberQ",
           "Wolfram`Arrays`ArrayNumericQ",
+          "Wolfram`Arrays`ArrayObject",
+          "Wolfram`Arrays`ArrayObjectQ",
           "Wolfram`Arrays`ArrayPack",
           "Wolfram`Arrays`ArrayPart",
           "Wolfram`Arrays`ArrayRank",

@@ -5,7 +5,7 @@ Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/ref/ArrayMaterialize
 Keywords: [materialize, normal form, wrapper container, quantity magnitude, lazy expansion]
-SeeAlso: [ArrayPack, ArrayExplicitValues, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ, ArrayComputeNativeQ, ArrayReplaceAll]
+SeeAlso: [ArrayPack, ArrayExplicitValues, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ, ArrayComputeNativeQ, ArrayReplaceAll, ArrayObject]
 RelatedGuides: [Arrays]
 ---
 
@@ -186,14 +186,23 @@ Normal[Tabular[{{1., 2.}, {3., 4.}}, {"a", "b"}]]
 
 ---
 
-[DataStructure]() handles alias the same store, but the materialized snapshot is decoupled: mutating the source afterwards does not change it:
+[DataStructure]() handles alias the same store, but the materialized snapshot is decoupled: mutating the source afterwards leaves the snapshot untouched:
 
 ```wl
-Module[{ds = CreateDataStructure["DynamicArray", {1., 2., 3.}], snapshot},
-    snapshot = ArrayMaterialize[ds];
-    ds["Append", 4.];
-    {snapshot, ds["Elements"]}
-]
+store = CreateDataStructure["DynamicArray", {1., 2., 3.}];
+snapshot = ArrayMaterialize[store];
+store["Append", 4.];
+snapshot
 ```
 
-<!-- => {{1., 2., 3.}, {1., 2., 3., 4.}} -->
+<!-- => {1., 2., 3.} -->
+
+---
+
+The store itself carries the appended element:
+
+```wl
+store["Elements"]
+```
+
+<!-- => {1., 2., 3., 4.} -->

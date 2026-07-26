@@ -13,38 +13,134 @@ The Wolfram Language stores arrays in many different containers: plain and packe
 
 ## One Vector, Four Containers
 
-The same four-element vector can live in a plain list, a [SparseArray](), a [NumericArray]() and a [QuantityArray]():
+The same four-element vector can live in a plain list, a [SparseArray](), a [NumericArray]() and a [QuantityArray](). The plain list holds the four values directly:
 
 ```wl
 containers = {{1., 0., 2., 0.}, SparseArray[{1., 0., 2., 0.}], NumericArray[{1., 0., 2., 0.}], QuantityArray[{1., 0., 2., 0.}, "Meters"]};
-Head /@ containers
+containers[[1]]
 ```
 
-<!-- => {List, SparseArray, NumericArray, QuantityArray} -->
+<!-- => {1., 0., 2., 0.} -->
 
-[ArrayExplicitQ]() recognizes each of them as an explicit-tier container:
+The [SparseArray]() stores only the two nonzero values:
 
 ```wl
-ArrayExplicitQ /@ containers
+containers[[2]]
 ```
 
-<!-- => {True, True, True, True} -->
+<!-- => a SparseArray summary box: rank 1, dimensions {4}, 2 stored elements -->
 
-[ArrayDimensions]() reads the shape of every container without materializing it:
+The [NumericArray]() stores the values in a `Real64` buffer:
 
 ```wl
-ArrayDimensions /@ containers
+containers[[3]]
 ```
 
-<!-- => {{4}, {4}, {4}, {4}} -->
+<!-- => a NumericArray summary box: Real64, dimensions {4} -->
 
-[ArrayMaterialize]() recovers the same plain packed vector from each container:
+The [QuantityArray]() carries the same magnitudes together with a unit:
 
 ```wl
-ArrayMaterialize /@ containers
+containers[[4]]
 ```
 
-<!-- => {{1., 0., 2., 0.}, {1., 0., 2., 0.}, {1., 0., 2., 0.}, {1., 0., 2., 0.}} -->
+<!-- => a QuantityArray summary box: dimensions {4}, unit meters -->
+
+[ArrayExplicitQ]() recognizes the plain list as an explicit-tier container:
+
+```wl
+ArrayExplicitQ[containers[[1]]]
+```
+
+<!-- => True -->
+
+The [SparseArray]() is explicit as well:
+
+```wl
+ArrayExplicitQ[containers[[2]]]
+```
+
+<!-- => True -->
+
+So is the [NumericArray]():
+
+```wl
+ArrayExplicitQ[containers[[3]]]
+```
+
+<!-- => True -->
+
+And so is the unit-carrying [QuantityArray]():
+
+```wl
+ArrayExplicitQ[containers[[4]]]
+```
+
+<!-- => True -->
+
+[ArrayDimensions]() reads the shape of the plain list:
+
+```wl
+ArrayDimensions[containers[[1]]]
+```
+
+<!-- => {4} -->
+
+For the [SparseArray]() the shape comes from the stored dimensions, not from the elements:
+
+```wl
+ArrayDimensions[containers[[2]]]
+```
+
+<!-- => {4} -->
+
+For the [NumericArray]() it comes from the buffer metadata:
+
+```wl
+ArrayDimensions[containers[[3]]]
+```
+
+<!-- => {4} -->
+
+For the [QuantityArray]() it comes from the wrapper, without unwrapping the units:
+
+```wl
+ArrayDimensions[containers[[4]]]
+```
+
+<!-- => {4} -->
+
+[ArrayMaterialize]() returns the plain list unchanged:
+
+```wl
+ArrayMaterialize[containers[[1]]]
+```
+
+<!-- => {1., 0., 2., 0.} -->
+
+It recovers the same packed vector from the [SparseArray]():
+
+```wl
+ArrayMaterialize[containers[[2]]]
+```
+
+<!-- => {1., 0., 2., 0.} -->
+
+And from the [NumericArray]():
+
+```wl
+ArrayMaterialize[containers[[3]]]
+```
+
+<!-- => {1., 0., 2., 0.} -->
+
+And from the [QuantityArray](), whose magnitudes are the same four values:
+
+```wl
+ArrayMaterialize[containers[[4]]]
+```
+
+<!-- => {1., 0., 2., 0.} -->
 
 The materialization routes are per-head: for a [QuantityArray]() the route is [QuantityMagnitude](), which returns the internal packed magnitudes without conversion, with the units recoverable from the container metadata. Applying [Normal]() instead builds an unpacked list of [Quantity]() elements, orders of magnitude slower on large arrays:
 
@@ -54,13 +150,29 @@ Normal[containers[[4]]]
 
 <!-- => {Quantity[1., "Meters"], Quantity[0., "Meters"], Quantity[2., "Meters"], Quantity[0., "Meters"]} -->
 
-The sparse accessors report the stored values, their positions and their count natively for a [SparseArray]():
+The sparse accessors read natively off a [SparseArray](); [ArrayExplicitValues]() gives the stored values:
 
 ```wl
-{ArrayExplicitValues[containers[[2]]], ArrayExplicitPositions[containers[[2]]], ArrayExplicitLength[containers[[2]]]}
+ArrayExplicitValues[containers[[2]]]
 ```
 
-<!-- => {{1., 2.}, {{1}, {3}}, 2} -->
+<!-- => {1., 2.} -->
+
+[ArrayExplicitPositions]() gives the positions those values occupy:
+
+```wl
+ArrayExplicitPositions[containers[[2]]]
+```
+
+<!-- => {{1}, {3}} -->
+
+[ArrayExplicitLength]() gives how many values are stored:
+
+```wl
+ArrayExplicitLength[containers[[2]]]
+```
+
+<!-- => 2 -->
 
 The same accessors extend to every other explicit container through an on-demand sparse wrap; here the nonzero values of the [NumericArray]():
 
@@ -82,10 +194,17 @@ sol = NDSolveValue[{f'[t] == {{0, 1}, {-1, 0}} . f[t], f[0] == {1., 0.}}, f, {t,
 
 <!-- => InterpolatingFunction summary box: domain {{0., 10.}}, output vector of length 2 -->
 
-Applied to a symbolic time, it becomes a lazy-tier container:
+Applied to a symbolic time, it stays unevaluated:
 
 ```wl
-state = sol[tau];
+state = sol[tau]
+```
+
+<!-- => InterpolatingFunction[{{0., 10.}}, ...][tau] -->
+
+That expression is a lazy-tier container:
+
+```wl
 ArrayLazyQ[state]
 ```
 
@@ -99,13 +218,29 @@ ArrayDimensions[state]
 
 <!-- => {2} -->
 
-A numeric argument evaluates immediately, so the result is an explicit packed vector rather than a lazy container:
+A numeric argument evaluates immediately, giving the vector of values at that time:
 
 ```wl
-{ArrayExplicitQ[sol[0.5]], ArrayLazyQ[sol[0.5]]}
+sol[0.5]
 ```
 
-<!-- => {True, False} -->
+<!-- => {0.877582, -0.479425} -->
+
+That result is an explicit container:
+
+```wl
+ArrayExplicitQ[sol[0.5]]
+```
+
+<!-- => True -->
+
+It is not a lazy container, since nothing is left awaiting a parameter:
+
+```wl
+ArrayLazyQ[sol[0.5]]
+```
+
+<!-- => False -->
 
 [ArrayReplaceAll]() substitutes into the whole expression at once, so supplying the time parameter evaluates the interpolating function a single time:
 
@@ -134,7 +269,15 @@ Table[ArrayReplaceAll[state, tau -> t1], {t1, 0., 1., 0.5}]
 Structural operations keep the container lazy: an element-level [ArrayMap]() with a numeric-valued function reinterpolates the value grid instead of materializing:
 
 ```wl
-ArrayLazyQ[ArrayMap[Chop, state]]
+chopped = ArrayMap[Chop, state]
+```
+
+<!-- => InterpolatingFunction[{{0., 10.}}, ...][tau], the reinterpolated value grid -->
+
+The mapped result is still a lazy container:
+
+```wl
+ArrayLazyQ[chopped]
 ```
 
 <!-- => True -->
@@ -143,14 +286,29 @@ ArrayLazyQ[ArrayMap[Chop, state]]
 
 A symbolic container has no elements: [VectorSymbol](), [MatrixSymbol]() and [ArraySymbol]() carry a name and declared dimensions, a plain symbol becomes symbolic by registering in [$Assumptions](), and structural trees of inactive transposes, tensor products, contractions and sums over such containers are containers themselves. Shape flows through the structure.
 
-A matrix symbol with declared dimensions is a symbolic-tier container with a shape:
+A matrix symbol carries a name and declared dimensions, and no elements at all:
 
 ```wl
-m = MatrixSymbol["M", {2, 3}];
-{ArraySymbolicQ[m], ArrayDimensions[m]}
+m = MatrixSymbol["M", {2, 3}]
 ```
 
-<!-- => {True, {2, 3}} -->
+<!-- => MatrixSymbol["M", {2, 3}] -->
+
+It belongs to the symbolic tier:
+
+```wl
+ArraySymbolicQ[m]
+```
+
+<!-- => True -->
+
+Its shape comes from the declared dimensions:
+
+```wl
+ArrayDimensions[m]
+```
+
+<!-- => {2, 3} -->
 
 Shape flows structurally through [Transpose](), which stays unevaluated on a symbolic container:
 
@@ -188,22 +346,54 @@ A plain symbol registered in [$Assumptions]() as a matrix is also a symbolic con
 
 ```wl
 $Assumptions = {Element[a, Matrices[{2, 2}]]};
-{ArraySymbolicQ[a], ArrayDimensions[a]}
+ArraySymbolicQ[a]
 ```
 
-<!-- => {True, {2, 2}} -->
+<!-- => True -->
+
+Its shape is read off the registered assumption:
+
+```wl
+ArrayDimensions[a]
+```
+
+<!-- => {2, 2} -->
 
 ## Capability Flags
 
 Admission to the container family is shape-based; whether elementwise arithmetic and [Dot]() also run natively on the container without materializing is a separate per-head capability flag, [ArrayComputeNativeQ](). [SparseArray](), packed and plain lists, [QuantityArray]() and [TabularColumn]() are compute-native; [NumericArray](), structured arrays and the remaining wrapper containers ([Tabular](), [Dataset](), [ByteArray](), [EventSeries](), [DataStructure]() stores) are storage-only, as are all lazy and symbolic containers. [Association]() is not admitted: its [Dimensions]() and [Normal]() report the entry multiset rather than the represented vector, so it has neither a faithful shape nor a faithful materialization.
 
-Of the four explicit containers above, only the [NumericArray]() is storage-only:
+Of the four explicit containers above, the plain list is compute-native:
 
 ```wl
-ArrayComputeNativeQ /@ containers
+ArrayComputeNativeQ[containers[[1]]]
 ```
 
-<!-- => {True, True, False, True} -->
+<!-- => True -->
+
+So is the [SparseArray]():
+
+```wl
+ArrayComputeNativeQ[containers[[2]]]
+```
+
+<!-- => True -->
+
+The [NumericArray]() is storage-only:
+
+```wl
+ArrayComputeNativeQ[containers[[3]]]
+```
+
+<!-- => False -->
+
+The [QuantityArray]() is compute-native again:
+
+```wl
+ArrayComputeNativeQ[containers[[4]]]
+```
+
+<!-- => True -->
 
 Operations on a storage-only container materialize first; mapping over the [NumericArray]() yields a plain packed list:
 
@@ -216,9 +406,17 @@ ArrayMap[2 # &, containers[[3]]]
 Where a native route exists, the container head is preserved; conjugation converts through [Normal]() and re-wraps the [NumericArray]():
 
 ```wl
-Head[ArrayConjugate[containers[[3]]]]
+conjugated = ArrayConjugate[containers[[3]]]
 ```
 
-<!-- => NumericArray -->
+<!-- => a NumericArray summary box: Real64, dimensions {4} -->
+
+Its real elements come back unchanged:
+
+```wl
+Normal[conjugated]
+```
+
+<!-- => {1., 0., 2., 0.} -->
 
 The flag lets callers choose their route: compute in place on native containers, or materialize once and compute on the packed data. Every container, native or not, answers the classification, shape and accessor questions without materializing.

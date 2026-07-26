@@ -57,6 +57,11 @@ The Arrays paclet treats the many array representations of the Wolfram Language 
 - `ArrayMap` map a function over the elements of a container, preserving sparse structure and packing
 - `ArrayReplaceAll` apply replacement rules, evaluating a lazy container a single time
 
+### Container handles
+
+- `ArrayObject` a handle around any supported container, formatted as a summary box showing its container kind and dimensions, with properties for kind, tier, shape and classification
+- `ArrayObjectQ` test whether an expression is a container handle
+
 ## Tech Notes
 
 - [Array Containers](paclet:Wolfram/Arrays/tutorial/ArrayContainers)

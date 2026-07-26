@@ -44,33 +44,133 @@ ArrayExplicitQ[MatrixSymbol["M", {2, 3}]]
 
 ### Native arrays
 
-`SparseArray`, packed and plain `List` arrays, `NumericArray` and structured arrays are all explicit:
+A `SparseArray` stores its explicit values and is explicit:
 
 ```wl
-ArrayExplicitQ /@ {SparseArray[{{0, 1}, {2, 0}}], Developer`ToPackedArray[N[{{1, 2}, {3, 4}}]], {{a1, a2}, {a3, a4}}, NumericArray[{{1., 0.}, {0., 2.}}], SymmetrizedArray[{{1, 2} -> 3.}, {2, 2}, Antisymmetric[{1, 2}]]}
+ArrayExplicitQ[SparseArray[{{0, 1}, {2, 0}}]]
 ```
 
-<!-- => {True, True, True, True, True} -->
-
-### Wrapper containers
-
-All admitted wrapper heads are explicit containers:
-
-```wl
-ArrayExplicitQ /@ {QuantityArray[{1., 2.}, "Meters"], TabularColumn[{1., 2.}], Tabular[{{1., 2.}, {3., 4.}}], Dataset[{1, 2, 3}], ByteArray[{1, 2, 3}], EventSeries[{1., 2.}, {{0, 1}}], CreateDataStructure["DynamicArray", {1., 2.}]}
-```
-
-<!-- => {True, True, True, True, True, True, True} -->
+<!-- => True -->
 
 ---
 
-Only the array-shaped `DataStructure` stores qualify:
+A packed `List` array is explicit:
 
 ```wl
-{ArrayExplicitQ[CreateDataStructure["DynamicArray", {1., 2., 3.}]], ArrayExplicitQ[CreateDataStructure["LinkedList"]]}
+ArrayExplicitQ[Developer`ToPackedArray[N[{{1, 2}, {3, 4}}]]]
 ```
 
-<!-- => {True, False} -->
+<!-- => True -->
+
+---
+
+A plain `List` array of symbolic scalars is explicit as well, since it stores its elements:
+
+```wl
+ArrayExplicitQ[{{a1, a2}, {a3, a4}}]
+```
+
+<!-- => True -->
+
+---
+
+A `NumericArray` is explicit through its own clause, since `ArrayQ` is False for it:
+
+```wl
+ArrayExplicitQ[NumericArray[{{1., 0.}, {0., 2.}}]]
+```
+
+<!-- => True -->
+
+---
+
+A structured array such as `SymmetrizedArray` is explicit:
+
+```wl
+ArrayExplicitQ[SymmetrizedArray[{{1, 2} -> 3.}, {2, 2}, Antisymmetric[{1, 2}]]]
+```
+
+<!-- => True -->
+
+### Wrapper containers
+
+A `QuantityArray` is an admitted wrapper container:
+
+```wl
+ArrayExplicitQ[QuantityArray[{1., 2.}, "Meters"]]
+```
+
+<!-- => True -->
+
+---
+
+A `TabularColumn` is an admitted wrapper container:
+
+```wl
+ArrayExplicitQ[TabularColumn[{1., 2.}]]
+```
+
+<!-- => True -->
+
+---
+
+A `Tabular` is an admitted wrapper container:
+
+```wl
+ArrayExplicitQ[Tabular[{{1., 2.}, {3., 4.}}]]
+```
+
+<!-- => True -->
+
+---
+
+A `Dataset` is an admitted wrapper container:
+
+```wl
+ArrayExplicitQ[Dataset[{1, 2, 3}]]
+```
+
+<!-- => True -->
+
+---
+
+A `ByteArray` is an admitted wrapper container:
+
+```wl
+ArrayExplicitQ[ByteArray[{1, 2, 3}]]
+```
+
+<!-- => True -->
+
+---
+
+An `EventSeries` is an admitted wrapper container:
+
+```wl
+ArrayExplicitQ[EventSeries[{1., 2.}, {{0, 1}}]]
+```
+
+<!-- => True -->
+
+---
+
+A "DynamicArray" `DataStructure` store qualifies:
+
+```wl
+ArrayExplicitQ[CreateDataStructure["DynamicArray", {1., 2., 3.}]]
+```
+
+<!-- => True -->
+
+---
+
+A "LinkedList" store is not array-shaped and does not qualify:
+
+```wl
+ArrayExplicitQ[CreateDataStructure["LinkedList"]]
+```
+
+<!-- => False -->
 
 ### Lazy and symbolic containers
 
@@ -93,10 +193,20 @@ ArrayExplicitQ[v[tau]]
 Applied to a numeric argument, it evaluates to an explicit packed array:
 
 ```wl
-{ArrayExplicitQ[v[0.5]], ArrayLazyQ[v[0.5]]}
+ArrayExplicitQ[v[0.5]]
 ```
 
-<!-- => {True, False} -->
+<!-- => True -->
+
+---
+
+The same numeric application is no longer lazy:
+
+```wl
+ArrayLazyQ[v[0.5]]
+```
+
+<!-- => False -->
 
 ## Properties and Relations
 
@@ -110,13 +220,23 @@ ArrayExplicitValues[SparseArray[{{0, 1}, {2, 0}}]]
 
 ---
 
-Being explicit does not imply computing natively; `NumericArray` is a storage-only container:
+A `NumericArray` is an explicit container:
 
 ```wl
-{ArrayExplicitQ[NumericArray[{1., 2.}]], ArrayComputeNativeQ[NumericArray[{1., 2.}]]}
+ArrayExplicitQ[NumericArray[{1., 2.}]]
 ```
 
-<!-- => {True, False} -->
+<!-- => True -->
+
+---
+
+Being explicit does not imply computing natively; `NumericArray` is storage-only:
+
+```wl
+ArrayComputeNativeQ[NumericArray[{1., 2.}]]
+```
+
+<!-- => False -->
 
 ## Possible Issues
 

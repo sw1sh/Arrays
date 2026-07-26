@@ -22,7 +22,7 @@ RelatedGuides: [Arrays]
 - A [QuantityArray]() is judged on its magnitudes, so integer-magnitude quantity arrays stay on the exact path like any other integer container.
 - [TabularColumn]() and [Tabular]() decide off their column element types (`"Real*"` or `"ComplexReal*"` pass) without traversing the data; any [Missing]() entry disqualifies the container.
 - A [Dataset]() reads inexactness off its stored type signature without traversing the data.
-- An [EventSeries]() materializes its values and inspects them; a [DataStructure]() store is untyped, so its elements are inspected.
+- An [EventSeries]() decides off the element type of its `"Values"` column, including the `"ListVector"` type a vector-valued series carries, and inspects the values only where that type settles nothing, as `"NumberExpression"` and `"IntegerExpression"` do not: they cover complex, rational and big-integer values alike. A [DataStructure]() store is untyped, so its elements are inspected.
 - Lazy and symbolic containers give [False](), as does any other input.
 
 ## Basic Examples
@@ -37,6 +37,8 @@ ArrayNumberQ[{1, Pi}]
 
 <!-- => False -->
 
+---
+
 Inexact numbers give [True]():
 
 ```wl
@@ -44,6 +46,8 @@ ArrayNumberQ[{1., 2.5}]
 ```
 
 <!-- => True -->
+
+---
 
 A sparse array of reals:
 
@@ -57,23 +61,43 @@ ArrayNumberQ[SparseArray[{1., 2.}]]
 
 ### Explicit containers
 
-An integer packed array is exact and gives [False](); a complex packed array is inexact:
+An integer packed array is exact and gives [False]():
 
 ```wl
-{ArrayNumberQ[Developer`ToPackedArray[{1, 2, 3}]], ArrayNumberQ[Developer`ToPackedArray[{1. + 2. I, 3. - 1. I}]]}
+ArrayNumberQ[Developer`ToPackedArray[{1, 2, 3}]]
 ```
 
-<!-- => {False, True} -->
+<!-- => False -->
 
 ---
 
-[NumericArray]() decides off its type:
+A complex packed array is inexact by construction:
 
 ```wl
-{ArrayNumberQ[NumericArray[{1, 2, 3}, "Integer64"]], ArrayNumberQ[NumericArray[{1., 2.}]]}
+ArrayNumberQ[Developer`ToPackedArray[{1. + 2. I, 3. - 1. I}]]
 ```
 
-<!-- => {False, True} -->
+<!-- => True -->
+
+---
+
+An [Integer]()-typed [NumericArray]() gives [False]():
+
+```wl
+ArrayNumberQ[NumericArray[{1, 2, 3}, "Integer64"]]
+```
+
+<!-- => False -->
+
+---
+
+A [Real]()-typed [NumericArray]() gives [True]():
+
+```wl
+ArrayNumberQ[NumericArray[{1., 2.}]]
+```
+
+<!-- => True -->
 
 ---
 
@@ -87,23 +111,43 @@ ArrayNumberQ[SparseArray[{1, 2, 3}]]
 
 ### Wrapper containers
 
-A [QuantityArray]() follows its magnitudes:
+A [QuantityArray]() with integer magnitudes stays on the exact path:
 
 ```wl
-{ArrayNumberQ[QuantityArray[{1, 2}, "Meters"]], ArrayNumberQ[QuantityArray[{1., 2.}, "Meters"]]}
+ArrayNumberQ[QuantityArray[{1, 2}, "Meters"]]
 ```
 
-<!-- => {False, True} -->
+<!-- => False -->
 
 ---
 
-A [TabularColumn]() decides off its element type:
+A [QuantityArray]() with real magnitudes is inexact:
 
 ```wl
-{ArrayNumberQ[TabularColumn[{1, 2, 3}]], ArrayNumberQ[TabularColumn[{1., 2., 3.}]]}
+ArrayNumberQ[QuantityArray[{1., 2.}, "Meters"]]
 ```
 
-<!-- => {False, True} -->
+<!-- => True -->
+
+---
+
+An integer-typed [TabularColumn]() gives [False]():
+
+```wl
+ArrayNumberQ[TabularColumn[{1, 2, 3}]]
+```
+
+<!-- => False -->
+
+---
+
+A `"Real*"`-typed [TabularColumn]() gives [True]():
+
+```wl
+ArrayNumberQ[TabularColumn[{1., 2., 3.}]]
+```
+
+<!-- => True -->
 
 ---
 
@@ -117,13 +161,23 @@ ArrayNumberQ[Tabular[{{1, 2.}, {3, 4.}}, {"x", "y"}]]
 
 ---
 
-A [Dataset]() decides off its type signature:
+An integer [Dataset]() reads exactness off its type signature:
 
 ```wl
-{ArrayNumberQ[Dataset[{1, 2, 3}]], ArrayNumberQ[Dataset[{1., 2., 3.}]]}
+ArrayNumberQ[Dataset[{1, 2, 3}]]
 ```
 
-<!-- => {False, True} -->
+<!-- => False -->
+
+---
+
+A real [Dataset]() reads inexactness off its type signature:
+
+```wl
+ArrayNumberQ[Dataset[{1., 2., 3.}]]
+```
+
+<!-- => True -->
 
 ---
 
@@ -137,24 +191,54 @@ ArrayNumberQ[ByteArray[{1, 2, 3}]]
 
 ### Lazy and symbolic containers
 
-Lazy and symbolic containers give [False]():
+A lazy container gives [False]() without materializing:
 
 ```wl
 f = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}];
-{ArrayNumberQ[f[tau]], ArrayNumberQ[MatrixSymbol["M", {2, 3}]]}
+ArrayNumberQ[f[tau]]
 ```
 
-<!-- => {False, False} -->
+<!-- => False -->
+
+---
+
+A symbolic container gives [False]():
+
+```wl
+ArrayNumberQ[MatrixSymbol["M", {2, 3}]]
+```
+
+<!-- => False -->
 
 ## Properties and Relations
 
-[ArrayNumberQ]() implies [ArrayNumericQ](), but not conversely:
+An exact integer list is numeric:
 
 ```wl
-{ArrayNumericQ[{1, 2}], ArrayNumberQ[{1, 2}], ArrayNumberQ[N[{1, 2}]]}
+ArrayNumericQ[{1, 2}]
 ```
 
-<!-- => {True, False, True} -->
+<!-- => True -->
+
+---
+
+The same list is not inexact, so [ArrayNumericQ]() does not imply [ArrayNumberQ]():
+
+```wl
+ArrayNumberQ[{1, 2}]
+```
+
+<!-- => False -->
+
+---
+
+Applying [N]() moves it onto the inexact path, where both predicates hold:
+
+```wl
+ArrayNumberQ[N[{1, 2}]]
+```
+
+<!-- => True -->
 
 ## Possible Issues
 

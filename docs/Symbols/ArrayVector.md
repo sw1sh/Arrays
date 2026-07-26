@@ -45,13 +45,23 @@ ArrayVector[SparseArray[{{0, 1}, {2, 0}}]]
 
 ---
 
-Scalar numeric input passes through unchanged:
+A machine number passes through unchanged:
 
 ```wl
-{ArrayVector[3.5], ArrayVector[Pi]}
+ArrayVector[3.5]
 ```
 
-<!-- => {3.5, Pi} -->
+<!-- => 3.5 -->
+
+---
+
+An exact numeric constant passes through unchanged as well:
+
+```wl
+ArrayVector[Pi]
+```
+
+<!-- => Pi -->
 
 ## Scope
 
@@ -68,10 +78,10 @@ ArrayVector[NumericArray[{{1., 0.}, {0., 2.}}]]
 A [QuantityArray]() flattens natively and keeps its wrapper:
 
 ```wl
-Head[ArrayVector[QuantityArray[{{1., 2.}, {3., 4.}}, "Meters"]]]
+ArrayVector[QuantityArray[{{1., 2.}, {3., 4.}}, "Meters"]]
 ```
 
-<!-- => QuantityArray -->
+<!-- => a QuantityArray summary box: dimensions {4}, unit "Meters"; magnitudes are {1., 2., 3., 4.} -->
 
 ---
 
@@ -85,15 +95,34 @@ ArrayVector[Tabular[{{1., 2.}, {3., 4.}}, {"a", "b"}]]
 
 ---
 
-A rank-12 [SparseArray]() takes the raw CSR fast path and agrees with [Flatten]():
+A rank-12 [SparseArray]() takes the raw CSR path and comes back as a rank-1 [SparseArray]():
 
 ```wl
-With[{sa = SparseArray[{ConstantArray[1, 12] -> 2., ConstantArray[2, 12] -> 3.}, ConstantArray[2, 12]]},
-    {Head[ArrayVector[sa]], ArrayDimensions[ArrayVector[sa]], ArrayVector[sa] == Flatten[sa]}
-]
+sa = SparseArray[{ConstantArray[1, 12] -> 2., ConstantArray[2, 12] -> 3.}, ConstantArray[2, 12]];
+ArrayVector[sa]
 ```
 
-<!-- => {SparseArray, {4096}, True} -->
+<!-- => a SparseArray summary box: rank-1, dimensions {4096}, 2 stored elements -->
+
+---
+
+Its length is the product of the original dimensions:
+
+```wl
+ArrayDimensions[ArrayVector[sa]]
+```
+
+<!-- => {4096} -->
+
+---
+
+The raw CSR route agrees with [Flatten]():
+
+```wl
+ArrayVector[sa] == Flatten[sa]
+```
+
+<!-- => True -->
 
 ---
 
@@ -105,14 +134,24 @@ fM = NDSolveValue[{m'[t] == {{0, 1}, {-1, 0}} . m[t], m[0] == {{1., 0.}, {0., 1.
 
 <!-- => InterpolatingFunction[{{0., 1.}}, "<>"] summary box -->
 
-Flattening reinterpolates the value grid, so the container stays lazy with the flattened shape:
+Flattening reinterpolates the value grid, so the container stays lazy:
 
 ```wl
 flat = ArrayVector[fM[tau]];
-{ArrayLazyQ[flat], ArrayDimensions[flat]}
+ArrayLazyQ[flat]
 ```
 
-<!-- => {True, {4}} -->
+<!-- => True -->
+
+---
+
+The flattened container has rank 1:
+
+```wl
+ArrayDimensions[flat]
+```
+
+<!-- => {4} -->
 
 Substituting the parameter matches flattening the original application:
 

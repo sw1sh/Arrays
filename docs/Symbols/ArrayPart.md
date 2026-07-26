@@ -11,7 +11,7 @@ RelatedGuides: [Arrays]
 
 ## Usage
 
-<code>[ArrayPart]()[*a*, {$i_1$, $i_2$, …}]</code> gives the part of the array container *a* at the given indices.
+<code>[ArrayPart]()[*a*, {$i_1$, $i_2$, ...}]</code> gives the part of the array container *a* at the given indices.
 
 ## Details & Options
 
@@ -59,11 +59,10 @@ ArrayPart[MatrixSymbol["M", {2, 3}], {1}]
 A [SparseArray]() slice stays sparse:
 
 ```wl
-row = ArrayPart[SparseArray[{{0, 1}, {2, 0}}], {1}];
-Head[row]
+row = ArrayPart[SparseArray[{{0, 1}, {2, 0}}], {1}]
 ```
 
-<!-- => SparseArray -->
+<!-- => a SparseArray summary box: rank 1, dimensions {2}, 1 stored element -->
 
 Its elements are those of the first row:
 

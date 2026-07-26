@@ -26,7 +26,7 @@ RelatedGuides: [Arrays]
 | <code>QuantityArray</code> | True |
 | <code>TabularColumn</code> | True |
 | <code>NumericArray</code> | False |
-| structured arrays (<code>SymmetrizedArray</code>, …) | False |
+| structured arrays (<code>SymmetrizedArray</code>, ...) | False |
 | <code>Tabular</code>, <code>Dataset</code> | False |
 | <code>ByteArray</code>, <code>EventSeries</code> | False |
 | <code>DataStructure</code> stores | False |
@@ -66,74 +66,224 @@ ArrayExplicitQ[NumericArray[{1., 2.}]]
 
 ### Compute-native containers
 
-The compute-native heads:
+A `SparseArray` computes natively:
 
 ```wl
-ArrayComputeNativeQ /@ {SparseArray[{{0, 1}, {2, 0}}], Developer`ToPackedArray[N[{1, 2}]], {{1, 2}, {3, 4}}, QuantityArray[{1., 2.}, "Meters"], TabularColumn[{1., 2.}]}
+ArrayComputeNativeQ[SparseArray[{{0, 1}, {2, 0}}]]
 ```
 
-<!-- => {True, True, True, True, True} -->
+<!-- => True -->
+
+---
+
+A packed `List` array computes natively:
+
+```wl
+ArrayComputeNativeQ[Developer`ToPackedArray[N[{1, 2}]]]
+```
+
+<!-- => True -->
+
+---
+
+A plain `List` array computes natively:
+
+```wl
+ArrayComputeNativeQ[{{1, 2}, {3, 4}}]
+```
+
+<!-- => True -->
+
+---
+
+A `QuantityArray` computes natively, keeping its units:
+
+```wl
+ArrayComputeNativeQ[QuantityArray[{1., 2.}, "Meters"]]
+```
+
+<!-- => True -->
+
+---
+
+A `TabularColumn` computes natively:
+
+```wl
+ArrayComputeNativeQ[TabularColumn[{1., 2.}]]
+```
+
+<!-- => True -->
 
 ### Storage-only containers
 
-The storage-only heads, all explicit containers nonetheless:
+A `NumericArray` is storage-only:
 
 ```wl
-ArrayComputeNativeQ /@ {NumericArray[{1., 2.}], SymmetrizedArray[{{1, 2} -> 3.}, {2, 2}, Antisymmetric[{1, 2}]], Tabular[{{1., 2.}, {3., 4.}}], Dataset[{1, 2, 3}], ByteArray[{1, 2, 3}], EventSeries[{1., 2.}, {{0, 1}}], CreateDataStructure["DynamicArray", {1., 2.}]}
+ArrayComputeNativeQ[NumericArray[{1., 2.}]]
 ```
 
-<!-- => {False, False, False, False, False, False, False} -->
+<!-- => False -->
+
+---
+
+A structured array such as `SymmetrizedArray` is storage-only:
+
+```wl
+ArrayComputeNativeQ[SymmetrizedArray[{{1, 2} -> 3.}, {2, 2}, Antisymmetric[{1, 2}]]]
+```
+
+<!-- => False -->
+
+---
+
+A `Tabular` is storage-only:
+
+```wl
+ArrayComputeNativeQ[Tabular[{{1., 2.}, {3., 4.}}]]
+```
+
+<!-- => False -->
+
+---
+
+A `Dataset` is storage-only:
+
+```wl
+ArrayComputeNativeQ[Dataset[{1, 2, 3}]]
+```
+
+<!-- => False -->
+
+---
+
+A `ByteArray` is storage-only:
+
+```wl
+ArrayComputeNativeQ[ByteArray[{1, 2, 3}]]
+```
+
+<!-- => False -->
+
+---
+
+An `EventSeries` is storage-only:
+
+```wl
+ArrayComputeNativeQ[EventSeries[{1., 2.}, {{0, 1}}]]
+```
+
+<!-- => False -->
+
+---
+
+A `DataStructure` array store is storage-only:
+
+```wl
+ArrayComputeNativeQ[CreateDataStructure["DynamicArray", {1., 2.}]]
+```
+
+<!-- => False -->
 
 ### Lazy and symbolic containers
 
-Neither lazy nor symbolic containers compute natively:
+A lazy container defers evaluation, so it does not compute natively:
 
 ```wl
 v = NDSolveValue[{f'[t] == {{0, 1}, {-1, 0}} . f[t], f[0] == {1., 0.}}, f, {t, 0, 1}];
-{ArrayComputeNativeQ[v[tau]], ArrayComputeNativeQ[MatrixSymbol["M", {2, 3}]]}
+ArrayComputeNativeQ[v[tau]]
 ```
 
-<!-- => {False, False} -->
+<!-- => False -->
+
+---
+
+A symbolic container has no elements to compute with:
+
+```wl
+ArrayComputeNativeQ[MatrixSymbol["M", {2, 3}]]
+```
+
+<!-- => False -->
 
 ## Properties and Relations
 
 A compute-native container runs arithmetic in place; a `QuantityArray` keeps its wrapper:
 
 ```wl
-With[{qa = QuantityArray[{1., 2., 3.}, "Meters"]}, {Head[2 qa], QuantityMagnitude[2 qa]}]
+2 QuantityArray[{1., 2., 3.}, "Meters"]
 ```
 
-<!-- => {QuantityArray, {2., 4., 6.}} -->
+<!-- => a QuantityArray summary box: 3 meter quantities -->
+
+---
+
+The scaled magnitudes are computed without leaving the wrapper:
+
+```wl
+QuantityMagnitude[2 QuantityArray[{1., 2., 3.}, "Meters"]]
+```
+
+<!-- => {2., 4., 6.} -->
 
 ---
 
 `Dot` on a `SparseArray` stays sparse:
 
 ```wl
-With[{s = SparseArray[{{0, 1}, {2, 0}}]}, {Head[s . s], Normal[s . s]}]
+SparseArray[{{0, 1}, {2, 0}}] . SparseArray[{{0, 1}, {2, 0}}]
 ```
 
-<!-- => {SparseArray, {{2, 0}, {0, 2}}} -->
+<!-- => a SparseArray summary box: dimensions {2, 2}, 2 explicit values -->
 
 ---
 
-Arithmetic on a storage-only `NumericArray` goes inert instead of computing:
+The dense form of that product:
 
 ```wl
-Head[2 NumericArray[{1., 2.}]]
+Normal[SparseArray[{{0, 1}, {2, 0}}] . SparseArray[{{0, 1}, {2, 0}}]]
 ```
 
-<!-- => Times -->
+<!-- => {{2, 0}, {0, 2}} -->
 
 ---
 
-Every compute-native container is explicit:
+Arithmetic on a storage-only `NumericArray` comes back unevaluated instead of computing:
 
 ```wl
-ArrayExplicitQ /@ {SparseArray[{1., 2.}], QuantityArray[{1., 2.}, "Meters"], TabularColumn[{1., 2.}]}
+2 NumericArray[{1., 2.}]
 ```
 
-<!-- => {True, True, True} -->
+<!-- => the product unchanged: 2 NumericArray[{1., 2.}, "Real64"], the NumericArray shown as its summary box -->
+
+---
+
+A `SparseArray` is a compute-native container and an explicit one:
+
+```wl
+ArrayExplicitQ[SparseArray[{1., 2.}]]
+```
+
+<!-- => True -->
+
+---
+
+A `QuantityArray` is explicit too:
+
+```wl
+ArrayExplicitQ[QuantityArray[{1., 2.}, "Meters"]]
+```
+
+<!-- => True -->
+
+---
+
+So is a `TabularColumn`:
+
+```wl
+ArrayExplicitQ[TabularColumn[{1., 2.}]]
+```
+
+<!-- => True -->
 
 ---
 
@@ -147,10 +297,20 @@ ArrayMaterialize[NumericArray[{{1., 0.}, {0., 2.}}]]
 
 ## Possible Issues
 
-`EventSeries` threads elementwise scalar arithmetic natively, yet the flag is False because it has no native `Dot`:
+`EventSeries` threads elementwise scalar arithmetic natively, staying an `EventSeries`:
 
 ```wl
-With[{ev = EventSeries[{1., 2.}, {{0, 1}}]}, {Head[ev + 1], ArrayComputeNativeQ[ev]}]
+EventSeries[{1., 2.}, {{0, 1}}] + 1
 ```
 
-<!-- => {EventSeries, False} -->
+<!-- => an EventSeries summary box: 2 events, values {2., 3.} -->
+
+---
+
+The flag is False nonetheless, since `EventSeries` has no native `Dot`:
+
+```wl
+ArrayComputeNativeQ[EventSeries[{1., 2.}, {{0, 1}}]]
+```
+
+<!-- => False -->

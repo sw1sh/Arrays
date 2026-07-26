@@ -18,7 +18,7 @@ RelatedGuides: [Arrays]
 - *a* can be an array container of any tier: explicit, lazy parametric, or symbolic.
 - *perm* can be a permutation list, a [Cycles]() specification, or a two-way rule $m \leftrightarrow n$ exchanging two levels; a two-way rule is converted to the corresponding [Cycles]() form before transposing.
 - Explicit containers with a native [Transpose]() keep their container: [SparseArray](), packed arrays, [NumericArray](), structured arrays such as [SymmetrizedArray](), and [QuantityArray]() all transpose without materializing.
-- The remaining wrapper containers ([Tabular](), [Dataset](), [EventSeries](), …) have no native [Transpose]() and transpose their materialized data, losing the wrapper.
+- The remaining wrapper containers ([Tabular](), [Dataset](), [EventSeries](), ...) have no native [Transpose]() and transpose their materialized data, losing the wrapper.
 - Applied to a nested [Transpose]() form, active or [Inactive](), [ArrayTranspose]() composes the two permutations into a single [Transpose]() wrapper instead of stacking them.
 - A lazy parametric container, an array-valued [InterpolatingFunction]() applied to a symbolic parameter, transposes the value array at every grid point and reinterpolates, so the result stays lazy.
 - Symbolic containers such as [MatrixSymbol]() stay in unevaluated [Transpose]() form, with trivial wrappers removed by [SimplifyArray]().
@@ -87,30 +87,54 @@ ArrayTranspose[NumericArray[{{1., 0.}, {0., 2.}}], {2, 1}]
 A [SymmetrizedArray]() stays a structured atom:
 
 ```wl
-Head[ArrayTranspose[SymmetrizedArray[{{1, 2} -> 3.}, {2, 2}, Antisymmetric[{1, 2}]], {2, 1}]]
+transposedSymmetrized = ArrayTranspose[SymmetrizedArray[{{1, 2} -> 3.}, {2, 2}, Antisymmetric[{1, 2}]], {2, 1}]
 ```
 
-<!-- => SymmetrizedArray -->
+<!-- => a SymmetrizedArray summary box: dimensions {2, 2}, Antisymmetric[{1, 2}] symmetry, 1 rule -->
+
+Transposing an antisymmetric array negates its independent component:
+
+```wl
+Normal[transposedSymmetrized]
+```
+
+<!-- => {{0, -3.}, {3., 0}} -->
 
 ---
 
 A [Cycles]() specification permutes the levels of a higher-rank container:
 
 ```wl
-Normal[ArrayTranspose[SparseArray[ArrayReshape[Range[24], {2, 3, 4}]], Cycles[{{1, 3}}]]] === Transpose[ArrayReshape[Range[24], {2, 3, 4}], Cycles[{{1, 3}}]]
+permuted = ArrayTranspose[SparseArray[ArrayReshape[Range[24], {2, 3, 4}]], Cycles[{{1, 3}}]]
 ```
 
-<!-- => True -->
+<!-- => a SparseArray summary box: rank 3, dimensions {4, 3, 2}, 24 stored elements -->
+
+The first and third levels are exchanged in the shape:
+
+```wl
+ArrayDimensions[permuted]
+```
+
+<!-- => {4, 3, 2} -->
+
+The leading slice of the permuted array reads the original along its third level:
+
+```wl
+Normal[permuted][[1]]
+```
+
+<!-- => {{1, 13}, {5, 17}, {9, 21}} -->
 
 ### Wrapper containers
 
 A [QuantityArray]() transposes natively and keeps its wrapper:
 
 ```wl
-Head[ArrayTranspose[QuantityArray[{{1., 2.}, {3., 4.}}, "Meters"], {2, 1}]]
+ArrayTranspose[QuantityArray[{{1., 2.}, {3., 4.}}, "Meters"], {2, 1}]
 ```
 
-<!-- => QuantityArray -->
+<!-- => a QuantityArray summary box: dimensions {2, 2}, unit meters -->
 
 The magnitudes are transposed underneath:
 
@@ -141,10 +165,17 @@ lazy = if[tau]
 
 <!-- => InterpolatingFunction[{{0., 1.}}, ...][tau] -->
 
-Transposing reinterpolates the value grid, so the result is again a lazy container:
+Transposing reinterpolates the value grid, giving another [InterpolatingFunction]() applied to the parameter:
 
 ```wl
-transposed = ArrayTranspose[lazy, {2, 1}];
+transposed = ArrayTranspose[lazy, {2, 1}]
+```
+
+<!-- => InterpolatingFunction[{{0., 1.}}, ...][tau], a reinterpolated matrix-valued function -->
+
+The result is again a lazy container:
+
+```wl
 ArrayLazyQ[transposed]
 ```
 

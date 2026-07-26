@@ -16,7 +16,7 @@ RelatedGuides: [Arrays]
 ## Details & Options
 
 - A symbolic container has a declared shape but no addressable elements: [ArrayDimensions]() reads the declared dimensions, and the stored-value accessors give <code>Missing["NotExplicit"]</code>.
-- Recognized structural trees over symbolic containers: <code>Inactive[D][*t*, …]</code>, `Transpose` and <code>Inactive[Transpose]</code>, <code>Inactive[TensorProduct]</code> with at least one symbolic factor, `Plus` with at least one symbolic term, and `TensorContract` or [ArrayContract]() in active or inactive form.
+- Recognized structural trees over symbolic containers: <code>Inactive[D][*t*, ...]</code>, `Transpose` and <code>Inactive[Transpose]</code>, <code>Inactive[TensorProduct]</code> with at least one symbolic factor, `Plus` with at least one symbolic term, and `TensorContract` or [ArrayContract]() in active or inactive form.
 - `$Assumptions` may be a list, a single expression, or an `And` conjunction (the form `Assuming` and `Refine` produce); a single `Element` entry can register several symbols at once through `Alternatives` or a symbol list.
 - A symbol with no matching `$Assumptions` entry is not a container.
 - Structural operations keep symbolic containers in unevaluated or inactive form: [ArrayTranspose]() gives a `Transpose` wrapper, [ArrayContract]() a `TensorContract` wrapper, and [ArrayMaterialize]() returns the input itself.
@@ -52,13 +52,33 @@ ArraySymbolicQ[symZ]
 
 ### Symbolic array heads
 
-All three symbolic array heads qualify:
+A `VectorSymbol` is a symbolic container:
 
 ```wl
-ArraySymbolicQ /@ {VectorSymbol["v", 3], MatrixSymbol["M", {2, 3}], ArraySymbol["T", {2, 3, 4}]}
+ArraySymbolicQ[VectorSymbol["v", 3]]
 ```
 
-<!-- => {True, True, True} -->
+<!-- => True -->
+
+---
+
+A `MatrixSymbol` is a symbolic container:
+
+```wl
+ArraySymbolicQ[MatrixSymbol["M", {2, 3}]]
+```
+
+<!-- => True -->
+
+---
+
+An `ArraySymbol` of any rank is a symbolic container:
+
+```wl
+ArraySymbolicQ[ArraySymbol["T", {2, 3, 4}]]
+```
+
+<!-- => True -->
 
 ### Assumption-registered symbols
 
@@ -75,20 +95,70 @@ Block[{$Assumptions = Element[m, Matrices[{2, 2}]] && z > 0}, ArraySymbolicQ[m]]
 A single `Element` entry can register several symbols at once through `Alternatives`:
 
 ```wl
-Block[{$Assumptions = {Element[p | q, Matrices[{3, 3}]]}}, {ArraySymbolicQ[p], ArrayDimensions[q]}]
+Block[{$Assumptions = {Element[p | q, Matrices[{3, 3}]]}}, ArraySymbolicQ[p]]
 ```
 
-<!-- => {True, {3, 3}} -->
+<!-- => True -->
+
+---
+
+The other symbol of the same entry is registered too, with the same declared dimensions:
+
+```wl
+Block[{$Assumptions = {Element[p | q, Matrices[{3, 3}]]}}, ArrayDimensions[q]]
+```
+
+<!-- => {3, 3} -->
 
 ### Structural trees
 
-Transposes, sums, inactive tensor products, contractions and inactive derivatives of symbolic containers are symbolic containers:
+A `Transpose` of a symbolic container is a symbolic container:
 
 ```wl
-ArraySymbolicQ /@ {Transpose[MatrixSymbol["M", {2, 3}]], MatrixSymbol["A", {2, 3}] + MatrixSymbol["B", {2, 3}], Inactive[TensorProduct][VectorSymbol["u", 2], MatrixSymbol["N", {3, 4}]], TensorContract[ArraySymbol["S", {2, 3, 2}], {{1, 3}}], Inactive[D][VectorSymbol["v", 3], x]}
+ArraySymbolicQ[Transpose[MatrixSymbol["M", {2, 3}]]]
 ```
 
-<!-- => {True, True, True, True, True} -->
+<!-- => True -->
+
+---
+
+A sum of symbolic containers is a symbolic container:
+
+```wl
+ArraySymbolicQ[MatrixSymbol["A", {2, 3}] + MatrixSymbol["B", {2, 3}]]
+```
+
+<!-- => True -->
+
+---
+
+An inactive tensor product of symbolic containers is a symbolic container:
+
+```wl
+ArraySymbolicQ[Inactive[TensorProduct][VectorSymbol["u", 2], MatrixSymbol["N", {3, 4}]]]
+```
+
+<!-- => True -->
+
+---
+
+A `TensorContract` of a symbolic container is a symbolic container:
+
+```wl
+ArraySymbolicQ[TensorContract[ArraySymbol["S", {2, 3, 2}], {{1, 3}}]]
+```
+
+<!-- => True -->
+
+---
+
+An inactive derivative of a symbolic container is a symbolic container:
+
+```wl
+ArraySymbolicQ[Inactive[D][VectorSymbol["v", 3], x]]
+```
+
+<!-- => True -->
 
 ---
 
@@ -120,22 +190,32 @@ ArrayMaterialize[MatrixSymbol["M", {2, 3}]]
 
 <!-- => MatrixSymbol["M", {2, 3}] -->
 
+## Possible Issues
+
+A plain `List` array of symbolic scalars is an explicit-tier container, since it stores its elements:
+
+```wl
+ArrayExplicitQ[{{a1, a2}, {a3, a4}}]
+```
+
+<!-- => True -->
+
 ---
 
-A symbolic container has no explicitly stored values:
+The same array is not a symbolic container:
+
+```wl
+ArraySymbolicQ[{{a1, a2}, {a3, a4}}]
+```
+
+<!-- => False -->
+
+---
+
+A symbolic container has no addressable elements, so the stored-value accessors decline to answer:
 
 ```wl
 ArrayExplicitValues[MatrixSymbol["M", {2, 3}]]
 ```
 
 <!-- => Missing["NotExplicit"] -->
-
-## Possible Issues
-
-A plain `List` array of symbolic scalars is an explicit-tier container, not a symbolic one:
-
-```wl
-Through[{ArrayExplicitQ, ArraySymbolicQ}[{{a1, a2}, {a3, a4}}]]
-```
-
-<!-- => {True, False} -->

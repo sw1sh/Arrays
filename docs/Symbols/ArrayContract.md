@@ -13,11 +13,11 @@ RelatedGuides: [Arrays]
 
 <code>[ArrayContract]()[*a*, *pairs*]</code> contracts the given index *pairs* of the array container *a*.
 
-<code>[ArrayContract]()[{$a_1$, $a_2$, …}, *pairs*]</code> contracts index pairs of the inactive tensor product of the containers $a_i$.
+<code>[ArrayContract]()[{$a_1$, $a_2$, ...}, *pairs*]</code> contracts index pairs of the inactive tensor product of the containers $a_i$.
 
 ## Details & Options
 
-- *pairs* is a list of level pairs <code>{{$s_1$, $t_1$}, …}</code>, as in [TensorContract]().
+- *pairs* is a list of level pairs <code>{{$s_1$, $t_1$}, ...}</code>, as in [TensorContract]().
 - Explicit compute-native containers contract through [TensorContract](), which evaluates immediately: contracting the two levels of a matrix gives its trace.
 - [TensorContract]() preserves [SymmetrizedArray]() structure natively, so contracting a structured atom stays a [SymmetrizedArray]().
 - [TensorContract]() does not evaluate on the wrapper heads, so wrapper containers, [QuantityArray]() included, contract their materialized data instead of returning an inert wrapper.
@@ -81,11 +81,10 @@ ArrayContract[{{1, 2}, {3, 4}}, {{1, 2}}]
 Contracting a [SymmetrizedArray]() keeps the structured atom:
 
 ```wl
-contracted = ArrayContract[SymmetrizedArray[{{1, 2, 1, 2} -> 1.}, {2, 2, 2, 2}, Symmetric[{1, 2}]], {{1, 3}}];
-Head[contracted]
+contracted = ArrayContract[SymmetrizedArray[{{1, 2, 1, 2} -> 1.}, {2, 2, 2, 2}, Symmetric[{1, 2}]], {{1, 3}}]
 ```
 
-<!-- => SymmetrizedArray -->
+<!-- => a SymmetrizedArray summary box: dimensions {2, 2}, no residual symmetry, 1 rule -->
 
 The contracted elements are those of the dense computation:
 

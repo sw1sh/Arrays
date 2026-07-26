@@ -32,6 +32,8 @@ ArrayExplicitPositions[SparseArray[{{0, 1}, {2, 0}}]]
 
 <!-- => {{1, 2}, {2, 1}} -->
 
+---
+
 A dense list gives its nonzero positions via an on-demand sparse wrap:
 
 ```wl
@@ -39,16 +41,6 @@ ArrayExplicitPositions[{{0, 1}, {2, 0}}]
 ```
 
 <!-- => {{1, 2}, {2, 1}} -->
-
----
-
-A symbolic container has no explicit positions:
-
-```wl
-ArrayExplicitPositions[VectorSymbol["v", 3]]
-```
-
-<!-- => Missing["NotExplicit"] -->
 
 ## Scope
 
@@ -69,24 +61,6 @@ ArrayExplicitPositions[{{}}]
 ```
 
 <!-- => {} -->
-
----
-
-An array-valued interpolating function is a lazy container when applied to a symbolic parameter:
-
-```wl
-f = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}]
-```
-
-<!-- => InterpolatingFunction[{{0., 1.}}, "<>"] summary box -->
-
-A lazy container gives <code>[Missing]()["NotExplicit"]</code>:
-
-```wl
-ArrayExplicitPositions[f[tau]]
-```
-
-<!-- => Missing["NotExplicit"] -->
 
 ## Properties and Relations
 
@@ -119,6 +93,34 @@ ArrayExplicitPositions[SparseArray[{1 -> 4}, {3}, 1]]
 ```
 
 <!-- => {{1}} -->
+
+---
+
+A symbolic container has no addressable stored values, so no position list is returned:
+
+```wl
+ArrayExplicitPositions[VectorSymbol["v", 3]]
+```
+
+<!-- => Missing["NotExplicit"] -->
+
+---
+
+An array-valued interpolating function is a lazy container when applied to a symbolic parameter:
+
+```wl
+f = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}]
+```
+
+<!-- => InterpolatingFunction[{{0., 1.}}, "<>"] summary box -->
+
+Its elements exist only after the parameter is supplied, so the lazy container gives no position list either:
+
+```wl
+ArrayExplicitPositions[f[tau]]
+```
+
+<!-- => Missing["NotExplicit"] -->
 
 ---
 

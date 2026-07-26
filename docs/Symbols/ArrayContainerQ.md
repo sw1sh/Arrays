@@ -5,7 +5,7 @@ Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/ref/ArrayContainerQ
 Keywords: [array container, predicate, explicit array, lazy array, symbolic array]
-SeeAlso: [ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ, ArrayComputeNativeQ, ArrayDimensions, ArrayRank, ArrayMaterialize]
+SeeAlso: [ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ, ArrayComputeNativeQ, ArrayDimensions, ArrayRank, ArrayMaterialize, ArrayObject]
 RelatedGuides: [Arrays]
 ---
 
@@ -53,13 +53,93 @@ ArrayContainerQ[{1, {2}}]
 
 ### Explicit containers
 
-All explicit containers are recognized, wrapper heads included:
+A plain `List` array is an explicit container:
 
 ```wl
-ArrayContainerQ /@ {{{1, 2}, {3, 4}}, NumericArray[{1., 2.}], QuantityArray[{1., 2.}, "Meters"], ByteArray[{1, 2, 3}], Dataset[{1, 2, 3}], Tabular[{{1., 2.}, {3., 4.}}], TabularColumn[{1., 2.}], EventSeries[{1., 2.}, {{0, 1}}], CreateDataStructure["DynamicArray", {1., 2.}]}
+ArrayContainerQ[{{1, 2}, {3, 4}}]
 ```
 
-<!-- => {True, True, True, True, True, True, True, True, True} -->
+<!-- => True -->
+
+---
+
+A `NumericArray` is an explicit container:
+
+```wl
+ArrayContainerQ[NumericArray[{1., 2.}]]
+```
+
+<!-- => True -->
+
+---
+
+A `QuantityArray` carries units and is still an explicit container:
+
+```wl
+ArrayContainerQ[QuantityArray[{1., 2.}, "Meters"]]
+```
+
+<!-- => True -->
+
+---
+
+A `ByteArray` is a rank-1 explicit container:
+
+```wl
+ArrayContainerQ[ByteArray[{1, 2, 3}]]
+```
+
+<!-- => True -->
+
+---
+
+A `Dataset` is an explicit container:
+
+```wl
+ArrayContainerQ[Dataset[{1, 2, 3}]]
+```
+
+<!-- => True -->
+
+---
+
+A `Tabular` is an explicit container:
+
+```wl
+ArrayContainerQ[Tabular[{{1., 2.}, {3., 4.}}]]
+```
+
+<!-- => True -->
+
+---
+
+A `TabularColumn` is an explicit container:
+
+```wl
+ArrayContainerQ[TabularColumn[{1., 2.}]]
+```
+
+<!-- => True -->
+
+---
+
+An `EventSeries` is an explicit container:
+
+```wl
+ArrayContainerQ[EventSeries[{1., 2.}, {{0, 1}}]]
+```
+
+<!-- => True -->
+
+---
+
+A `DataStructure` array store is an explicit container:
+
+```wl
+ArrayContainerQ[CreateDataStructure["DynamicArray", {1., 2.}]]
+```
+
+<!-- => True -->
 
 ### Lazy containers
 
@@ -99,25 +179,43 @@ Block[{$Assumptions = {Element[a, Matrices[{2, 2}]]}}, ArrayContainerQ[a]]
 
 ## Properties and Relations
 
-[ArrayContainerQ]() is the disjunction of the three tier predicates:
+[ArrayContainerQ]() is the disjunction of the three tier predicates; a `MatrixSymbol` is a container:
 
 ```wl
-With[{expr = SparseArray[{{0, 1}, {2, 0}}]},
-    ArrayContainerQ[expr] === (ArrayExplicitQ[expr] || ArrayLazyQ[expr] || ArraySymbolicQ[expr])
-]
+ArrayContainerQ[MatrixSymbol["M", {2, 3}]]
 ```
 
 <!-- => True -->
 
 ---
 
-Exactly one tier predicate is True for any container:
+Of the three tier predicates, [ArrayExplicitQ]() is False for it:
 
 ```wl
-Through[{ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ}[MatrixSymbol["M", {2, 3}]]]
+ArrayExplicitQ[MatrixSymbol["M", {2, 3}]]
 ```
 
-<!-- => {False, False, True} -->
+<!-- => False -->
+
+---
+
+[ArrayLazyQ]() is False for it as well:
+
+```wl
+ArrayLazyQ[MatrixSymbol["M", {2, 3}]]
+```
+
+<!-- => False -->
+
+---
+
+[ArraySymbolicQ]() is the single tier predicate that answers True:
+
+```wl
+ArraySymbolicQ[MatrixSymbol["M", {2, 3}]]
+```
+
+<!-- => True -->
 
 ## Possible Issues
 

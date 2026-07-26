@@ -32,6 +32,8 @@ ArrayExplicitLength[SparseArray[{{0, 1}, {2, 0}}]]
 
 <!-- => 2 -->
 
+---
+
 A dense list counts its nonzero values via an on-demand sparse wrap:
 
 ```wl
@@ -39,16 +41,6 @@ ArrayExplicitLength[{{0, 1}, {2, 0}}]
 ```
 
 <!-- => 2 -->
-
----
-
-A symbolic container has no explicit values to count:
-
-```wl
-ArrayExplicitLength[ArraySymbol["T", {2, 3, 4}]]
-```
-
-<!-- => Missing["NotExplicit"] -->
 
 ## Scope
 
@@ -60,6 +52,26 @@ ArrayExplicitLength[{{}}]
 
 <!-- => 0 -->
 
+## Properties and Relations
+
+[ArrayExplicitLength]() counts the values of [ArrayExplicitValues]():
+
+```wl
+ArrayExplicitLength[{{0, 1}, {2, 0}}] === Length[ArrayExplicitValues[{{0, 1}, {2, 0}}]]
+```
+
+<!-- => True -->
+
+## Possible Issues
+
+A symbolic container has no addressable stored values, so there is nothing to count:
+
+```wl
+ArrayExplicitLength[ArraySymbol["T", {2, 3, 4}]]
+```
+
+<!-- => Missing["NotExplicit"] -->
+
 ---
 
 An array-valued interpolating function is a lazy container when applied to a symbolic parameter:
@@ -70,20 +82,10 @@ f = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0
 
 <!-- => InterpolatingFunction[{{0., 1.}}, "<>"] summary box -->
 
-A lazy container gives <code>[Missing]()["NotExplicit"]</code>:
+Its elements exist only after the parameter is supplied, so the lazy container gives no count either:
 
 ```wl
 ArrayExplicitLength[f[tau]]
 ```
 
 <!-- => Missing["NotExplicit"] -->
-
-## Properties and Relations
-
-[ArrayExplicitLength]() counts the values of [ArrayExplicitValues]():
-
-```wl
-ArrayExplicitLength[{{0, 1}, {2, 0}}] === Length[ArrayExplicitValues[{{0, 1}, {2, 0}}]]
-```
-
-<!-- => True -->

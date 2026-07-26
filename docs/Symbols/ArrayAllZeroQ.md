@@ -126,23 +126,43 @@ ArrayAllZeroQ[MatrixSymbol["M", {2, 3}]]
 
 ## Properties and Relations
 
-[ArrayAllZeroQ]() tests the values and [ZeroArrayQ]() the shape:
+[ArrayAllZeroQ]() tests the values, so a matrix of zeros passes:
 
 ```wl
-{ArrayAllZeroQ[{{0, 0}, {0, 0}}], ZeroArrayQ[{{0, 0}, {0, 0}}]}
+ArrayAllZeroQ[{{0, 0}, {0, 0}}]
 ```
 
-<!-- => {True, False} -->
+<!-- => True -->
 
 ---
 
-A [SparseArray]() with zero implicit value and no explicitly stored values is all zero; [ArrayExplicitLength]() counts the stored values:
+[ZeroArrayQ]() tests the shape, so the same matrix gives [False]():
 
 ```wl
-{ArrayExplicitLength[SparseArray[{}, {2, 2}]], ArrayAllZeroQ[SparseArray[{}, {2, 2}]]}
+ZeroArrayQ[{{0, 0}, {0, 0}}]
 ```
 
-<!-- => {0, True} -->
+<!-- => False -->
+
+---
+
+[ArrayExplicitLength]() counts the stored values of a [SparseArray]() with no explicitly stored values:
+
+```wl
+ArrayExplicitLength[SparseArray[{}, {2, 2}]]
+```
+
+<!-- => 0 -->
+
+---
+
+With a zero implicit value and nothing stored, the array is all zero:
+
+```wl
+ArrayAllZeroQ[SparseArray[{}, {2, 2}]]
+```
+
+<!-- => True -->
 
 ## Possible Issues
 

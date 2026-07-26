@@ -54,6 +54,20 @@ frontmatterTemplate[srcFile_String] := Block[{m},
     If[m === {}, Missing[], First[m]]
 ]
 
+(* The example cells of a page are evaluated in this kernel as the page is
+   converted, so a symbol a page assigns leaks into every page converted after
+   it: f = NDSolveValue[...] on one page leaves f an InterpolatingFunction, and
+   on the next page f'[t] == ... then reduces to True and NDSolveValue fails
+   with ::deqn.  Remove exactly the names a page assigns at the start of a line
+   in one of its example cells, as soon as it has been converted. *)
+
+pageAssignments[srcFile_String] := DeleteDuplicates @ StringCases[
+    Import[srcFile, "Text"],
+    StartOfLine ~~ name : (WordCharacter ..) ~~ " = " :> "Global`" <> name
+]
+
+clearPageState[srcFile_String] := Quiet @ Remove @@ pageAssignments[srcFile]
+
 buildDoc[srcFile_String] := Block[{tmpl, dir, out},
     If[ ! StringStartsQ[StringTrim @ Import[srcFile, "Text"], "---"],
         Print["  (skip ", FileNameTake[srcFile], ": no frontmatter)"];
@@ -68,6 +82,7 @@ buildDoc[srcFile_String] := Block[{tmpl, dir, out},
     Quiet @ CreateDirectory[dir, CreateIntermediateDirectories -> True];
     out = FileNameJoin[{dir, FileBaseName[srcFile] <> ".nb"}];
     mtn[srcFile, out];
+    clearPageState[srcFile];
     Print["  ", FileNameTake[srcFile], " -> ", FileNameDrop[out, FileNameDepth[repoDir]]]
 ]
 

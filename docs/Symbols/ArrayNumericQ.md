@@ -20,7 +20,7 @@ RelatedGuides: [Arrays]
 - Packed arrays, [NumericArray]() and [ByteArray]() are numeric by construction; a [QuantityArray]() is numeric-with-units by construction.
 - [TabularColumn]() and [Tabular]() decide off their column element types (`"Integer*"`, `"UnsignedInteger*"`, `"Real*"`, `"ComplexReal*"`) without traversing the data; any [Missing]() entry disqualifies the container.
 - A [Dataset]() reads numericity and shape off its stored type signature in one call, without traversing the data.
-- An [EventSeries]() materializes its values and inspects them; a [DataStructure]() store is untyped, so its elements are inspected.
+- An [EventSeries]() decides off the element type of its `"Values"` column, including the `"ListVector"` type a vector-valued series carries, and inspects the values only where that type settles nothing, as `"NumberExpression"` and `"IntegerExpression"` do not: they cover complex, rational and big-integer values alike. A [DataStructure]() store is untyped, so its elements are inspected.
 - Lazy and symbolic containers give [False](); a lazy head applied to all-numeric arguments is an explicit array and is tested elementwise.
 - Any other input gives [False]().
 
@@ -185,13 +185,23 @@ ArrayNumericQ[MatrixSymbol["M", {2, 3}]]
 
 ## Properties and Relations
 
-[ArrayNumberQ]() is stricter: it requires inexact numbers, so exact numeric arrays are numeric but not number arrays:
+An exact integer array is numeric:
 
 ```wl
-{ArrayNumericQ[{1, 2}], ArrayNumberQ[{1, 2}]}
+ArrayNumericQ[{1, 2}]
 ```
 
-<!-- => {True, False} -->
+<!-- => True -->
+
+---
+
+[ArrayNumberQ]() is stricter, requiring inexact numbers, so the same array is not a number array:
+
+```wl
+ArrayNumberQ[{1, 2}]
+```
+
+<!-- => False -->
 
 ## Possible Issues
 

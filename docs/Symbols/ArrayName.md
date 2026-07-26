@@ -66,10 +66,20 @@ ArrayName[ArraySymbol["T", {2, 3, 4}]]
 An assumption-registered symbol is its own name:
 
 ```wl
-Block[{$Assumptions = Element[a, Matrices[{2, 2}]]}, {ArrayName[a], ArrayDimensions[a]}]
+Block[{$Assumptions = Element[a, Matrices[{2, 2}]]}, ArrayName[a]]
 ```
 
-<!-- => {a, {2, 2}} -->
+<!-- => a -->
+
+---
+
+The same assumption supplies its dimensions:
+
+```wl
+Block[{$Assumptions = Element[a, Matrices[{2, 2}]]}, ArrayDimensions[a]]
+```
+
+<!-- => {2, 2} -->
 
 ---
 

@@ -15,6 +15,13 @@ a materialization path exists. In-container compute support is a per-type capabi
 not a requirement - storage-only containers materialize before compute and re-wrap
 where a reconstruction path exists.
 
+`ArrayObject` wraps any supported container in a uniform, self-describing handle whose
+summary box shows at a glance what kind of container it is and what shape it has. It is a
+completeness feature and a thin veneer: no other kernel file mentions it, every other
+function keeps operating on raw containers, and a handle is unwrapped to one - by
+`ArrayObject[a]["Data"]`, or at the entry point of every exported function - before any
+of them sees it. A result is never re-wrapped.
+
 ## Layout
 
 ```

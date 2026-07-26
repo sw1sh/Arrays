@@ -21,8 +21,8 @@ RelatedGuides: [Arrays]
 - At element level a [SparseArray]() stays a [SparseArray](): *f* maps over the explicit values and is also applied to the implicit (background) value.
 - At any other level a [SparseArray]() densifies through [Normal]() before mapping.
 - A packed array repacks with the plain, non-coercing form of `` Developer`ToPackedArray ``, so exact results such as `{1/2, 1, 3/2}` keep value parity with [Map]() instead of being coerced to machine reals.
-- [NumericArray](), structured arrays such as [SymmetrizedArray]() and wrapper containers ([QuantityArray](), [Tabular](), …) map over their materialized data and give an explicit array; a [QuantityArray]() maps over its magnitudes, not over [Quantity]() elements.
-- At element level a lazy container maps *f* over its interpolation value grid and reinterpolates, staying lazy, provided *f* keeps the grid values numeric ([Chop](), [N](), [Abs](), …); otherwise [ArrayMap]() stays unevaluated.
+- [NumericArray](), structured arrays such as [SymmetrizedArray]() and wrapper containers ([QuantityArray](), [Tabular](), ...) map over their materialized data and give an explicit array; a [QuantityArray]() maps over its magnitudes, not over [Quantity]() elements.
+- At element level a lazy container maps *f* over its interpolation value grid and reinterpolates, staying lazy, provided *f* keeps the grid values numeric ([Chop](), [N](), [Abs](), ...); otherwise [ArrayMap]() stays unevaluated.
 - At element level a symbolic container has no addressable elements, so *f* applies to the whole container, letting [Simplify]() and friends distribute over the symbolic tree; at other levels [ArrayMap]() stays unevaluated.
 
 ## Basic Examples
@@ -85,10 +85,18 @@ ArrayMap[# / 2 &, Developer`ToPackedArray[{1, 2, 3}]]
 
 <!-- => {1/2, 1, 3/2} -->
 
-When the result packs without coercion, it is repacked:
+A result that packs without coercion is repacked:
 
 ```wl
-Developer`PackedArrayQ @ ArrayMap[# * 2 &, Developer`ToPackedArray[{1, 2, 3}]]
+doubled = ArrayMap[# * 2 &, Developer`ToPackedArray[{1, 2, 3}]]
+```
+
+<!-- => {2, 4, 6} -->
+
+The repacked result is a packed array:
+
+```wl
+Developer`PackedArrayQ[doubled]
 ```
 
 <!-- => True -->
@@ -115,11 +123,19 @@ ArrayMap[#^2 &, QuantityArray[{1, 2, 3}, "Meters"]]
 
 ---
 
-A lazy container with a numeric-valued *f* remaps its value grid and stays lazy:
+A lazy container with a numeric-valued *f* remaps its value grid, giving another interpolating function applied to the parameter:
 
 ```wl
 sol = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}];
-ArrayLazyQ @ ArrayMap[Chop, sol[tau]]
+chopped = ArrayMap[Chop, sol[tau]]
+```
+
+<!-- => InterpolatingFunction[{{0., 1.}}, ...][tau], the reinterpolated value grid -->
+
+The remapped container is still lazy:
+
+```wl
+ArrayLazyQ[chopped]
 ```
 
 <!-- => True -->

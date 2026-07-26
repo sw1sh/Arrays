@@ -15,7 +15,7 @@ RelatedGuides: [Arrays]
 
 ## Details & Options
 
-- [ArrayRank]() is the length of <code>[ArrayDimensions]()[*a*]</code> and inherits all of its shape routes: explicit containers and wrappers introspect their shape metadata, a lazy <code>[InterpolatingFunction]()[…][*t*]</code> reads `"OutputDimensions"` off its head, and symbolic containers recurse structurally through [Transpose](), [Plus](), inactive [TensorProduct](), [TensorContract]() and inactive [D]() forms.
+- [ArrayRank]() is the length of <code>[ArrayDimensions]()[*a*]</code> and inherits all of its shape routes: explicit containers and wrappers introspect their shape metadata, a lazy <code>[InterpolatingFunction]()[...][*t*]</code> reads `"OutputDimensions"` off its head, and symbolic containers recurse structurally through [Transpose](), [Plus](), inactive [TensorProduct](), [TensorContract]() and inactive [D]() forms.
 - The argument is never materialized: the rank of a large [SparseArray](), a lazy parametric array or a purely symbolic tensor costs only a shape probe.
 - Scalars and non-array input, including ragged lists, give rank 0, since [ArrayDimensions]() gives `{}` for them.
 
@@ -98,13 +98,23 @@ ArrayRank[VectorSymbol["v", n]]
 
 ## Properties and Relations
 
-[ArrayRank]() is the length of [ArrayDimensions]():
+A symbolic matrix declares two dimensions:
 
 ```wl
-{ArrayDimensions[MatrixSymbol["M", {2, 3}]], ArrayRank[MatrixSymbol["M", {2, 3}]]}
+ArrayDimensions[MatrixSymbol["M", {2, 3}]]
 ```
 
-<!-- => {{2, 3}, 2} -->
+<!-- => {2, 3} -->
+
+---
+
+[ArrayRank]() is the length of that list:
+
+```wl
+ArrayRank[MatrixSymbol["M", {2, 3}]]
+```
+
+<!-- => 2 -->
 
 ## Possible Issues
 

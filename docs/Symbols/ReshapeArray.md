@@ -20,7 +20,7 @@ RelatedGuides: [Arrays]
 - *dims* must be a list of non-negative integers.
 - Explicit containers reshape through [ArrayReshape]() with its semantics: elements are taken in row-major order, excess elements are dropped, and missing elements are filled with 0 or with *pad*.
 - The container is preserved wherever [ArrayReshape]() preserves it: a [SparseArray]() stays sparse, a packed array stays packed, a [NumericArray]() stays a [NumericArray](), and a [QuantityArray]() keeps its wrapper.
-- The remaining wrapper containers ([Tabular](), [Dataset](), [EventSeries](), …) reshape their materialized data, losing the wrapper.
+- The remaining wrapper containers ([Tabular](), [Dataset](), [EventSeries](), ...) reshape their materialized data, losing the wrapper.
 - A lazy parametric container, an array-valued [InterpolatingFunction]() applied to a symbolic parameter, reshapes the value array at every grid point and reinterpolates, so the result stays lazy.
 - Symbolic containers are not reshaped; [ReshapeArray]() stays unevaluated on them.
 
@@ -31,11 +31,10 @@ RelatedGuides: [Arrays]
 Reshape a sparse matrix to a vector; the container is preserved:
 
 ```wl
-reshaped = ReshapeArray[SparseArray[{{0, 1}, {2, 0}}], {4}];
-Head[reshaped]
+reshaped = ReshapeArray[SparseArray[{{0, 1}, {2, 0}}], {4}]
 ```
 
-<!-- => SparseArray -->
+<!-- => a SparseArray summary box: rank 1, dimensions {4}, 2 stored elements -->
 
 The elements are taken in row-major order:
 
@@ -59,10 +58,18 @@ ReshapeArray[{1, 2, 3, 4}, {2, 3}, 0]
 
 ### Explicit containers
 
-A packed array stays packed:
+A packed vector reshapes to a packed matrix:
 
 ```wl
-Developer`PackedArrayQ[ReshapeArray[Developer`ToPackedArray[N @ {1, 2, 3, 4}], {2, 2}]]
+repacked = ReshapeArray[Developer`ToPackedArray[N @ {1, 2, 3, 4}], {2, 2}]
+```
+
+<!-- => {{1., 2.}, {3., 4.}} -->
+
+The result is still packed:
+
+```wl
+Developer`PackedArrayQ[repacked]
 ```
 
 <!-- => True -->
@@ -102,10 +109,10 @@ ReshapeArray[{1, 2}, {4}, x]
 A [QuantityArray]() reshapes natively and keeps its wrapper:
 
 ```wl
-Head[ReshapeArray[QuantityArray[{{1., 2.}, {3., 4.}}, "Meters"], {4}]]
+ReshapeArray[QuantityArray[{{1., 2.}, {3., 4.}}, "Meters"], {4}]
 ```
 
-<!-- => QuantityArray -->
+<!-- => a QuantityArray summary box: dimensions {4}, unit meters -->
 
 ---
 
@@ -119,11 +126,18 @@ ReshapeArray[Tabular[{{1., 2.}, {3., 4.}}], {4}]
 
 ### Lazy containers
 
-An array-valued [InterpolatingFunction]() applied to a symbolic parameter reshapes its value grid and stays lazy:
+An array-valued [InterpolatingFunction]() applied to a symbolic parameter reshapes its value grid, giving another interpolating function applied to the parameter:
 
 ```wl
 if = NDSolveValue[{m'[t] == {{0, 1}, {-1, 0}} . m[t], m[0] == {{1., 0.}, {0., 1.}}}, m, {t, 0, 1}];
-reshaped = ReshapeArray[if[tau], {4}];
+reshaped = ReshapeArray[if[tau], {4}]
+```
+
+<!-- => InterpolatingFunction[{{0., 1.}}, ...][tau], now vector-valued of length 4 -->
+
+The reshaped container is still lazy:
+
+```wl
 ArrayLazyQ[reshaped]
 ```
 

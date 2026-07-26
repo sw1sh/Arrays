@@ -90,30 +90,60 @@ ZeroArrayQ[f[tau]]
 
 ## Properties and Relations
 
-[ZeroArrayQ]() is equivalent to membership of 0 in [ArrayDimensions]():
+A nested empty list has a zero among its dimensions:
 
 ```wl
-{ArrayDimensions[{{}}], MemberQ[ArrayDimensions[{{}}], 0]}
+ArrayDimensions[{{}}]
 ```
 
-<!-- => {{1, 0}, True} -->
+<!-- => {1, 0} -->
 
 ---
 
-[ZeroArrayQ]() tests the shape and [ArrayAllZeroQ]() the values; an all-zero matrix is not a zero-dimension array:
+[ZeroArrayQ]() is equivalent to membership of 0 in [ArrayDimensions]():
 
 ```wl
-{ZeroArrayQ[{{0, 0}, {0, 0}}], ArrayAllZeroQ[{{0, 0}, {0, 0}}]}
+MemberQ[ArrayDimensions[{{}}], 0]
 ```
 
-<!-- => {False, True} -->
+<!-- => True -->
+
+---
+
+[ZeroArrayQ]() tests the shape, so an all-zero matrix with positive dimensions gives [False]():
+
+```wl
+ZeroArrayQ[{{0, 0}, {0, 0}}]
+```
+
+<!-- => False -->
+
+---
+
+[ArrayAllZeroQ]() tests the values of the same matrix:
+
+```wl
+ArrayAllZeroQ[{{0, 0}, {0, 0}}]
+```
+
+<!-- => True -->
 
 ## Possible Issues
 
-Non-array input, including scalars, gives [False]() rather than staying unevaluated:
+A scalar gives [False]() rather than staying unevaluated:
 
 ```wl
-{ZeroArrayQ[5], ZeroArrayQ["junk"]}
+ZeroArrayQ[5]
 ```
 
-<!-- => {False, False} -->
+<!-- => False -->
+
+---
+
+Any other non-array input gives [False]() as well:
+
+```wl
+ZeroArrayQ["junk"]
+```
+
+<!-- => False -->

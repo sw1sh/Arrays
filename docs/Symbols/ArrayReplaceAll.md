@@ -112,14 +112,22 @@ ArrayReplaceAll[{{1, x}, {x, 2}}, x -> 0]
 
 ## Properties and Relations
 
-Substituting the parameter of a lazy container reproduces direct evaluation of the array-valued function exactly:
+Substituting the parameter of a lazy container evaluates the array-valued function at that value:
 
 ```wl
 sol = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}];
-ArrayReplaceAll[sol[tau], tau -> 0.5] == sol[0.5]
+ArrayReplaceAll[sol[tau], tau -> 0.5]
 ```
 
-<!-- => True -->
+<!-- => {0.8775824340095093, -0.479425447892118} -->
+
+Direct evaluation of the same function reproduces those values exactly, digit for digit:
+
+```wl
+sol[0.5]
+```
+
+<!-- => {0.8775824340095093, -0.479425447892118} -->
 
 Materializing first instead expands the container into per-scalar reinterpolations, so substituting into that form only approximates the direct evaluation:
 

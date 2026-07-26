@@ -15,7 +15,7 @@ RelatedGuides: [Arrays]
 
 ## Details & Options
 
-- For a [SparseArray](), the positions are its native `"ExplicitPositions"` property, returned as a packed integer array without materializing the array.
+- For a [SparseArray](), the positions are its native `"ExplicitPositions"` property, returned as a packed integer array without materializing the array; apply [Normal]() to it where a plain list is required.
 - Any other explicit container is wrapped in a [SparseArray]() on demand, so its positions are the positions of its nonzero values in row-major order.
 - Each position is a full index list of length <code>[ArrayRank]()[*a*]</code>.
 - A [NumericArray]() converts through [Normal]() before the wrap, since [SparseArray]() cannot ingest a [NumericArray]() directly; wrapper containers such as [QuantityArray]() or [Tabular]() wrap their [ArrayMaterialize]() data.
@@ -64,25 +64,35 @@ ArrayExplicitPositions[{{}}]
 
 ## Properties and Relations
 
-Together with [ArrayExplicitValues]() and [ArrayDimensions](), the positions rebuild the array:
+Together with [ArrayExplicitValues]() and [ArrayDimensions](), the positions rebuild the array they were read from:
 
 ```wl
 With[{a = SparseArray[{{0, 1}, {2, 0}}]},
-    SparseArray[Thread[Normal[ArrayExplicitPositions[a]] -> ArrayExplicitValues[a]], ArrayDimensions[a]] == a
+    Normal @ SparseArray[Thread[Normal[ArrayExplicitPositions[a]] -> ArrayExplicitValues[a]], ArrayDimensions[a]]
 ]
 ```
 
-<!-- => True -->
+<!-- => {{0, 1}, {2, 0}} -->
 
 ---
 
-[ArrayExplicitLength]() counts the positions:
+The number of positions returned for a matrix with two nonzero entries:
 
 ```wl
-Length[ArrayExplicitPositions[{{0, 1}, {2, 0}}]] === ArrayExplicitLength[{{0, 1}, {2, 0}}]
+Length[ArrayExplicitPositions[{{0, 1}, {2, 0}}]]
 ```
 
-<!-- => True -->
+<!-- => 2 -->
+
+---
+
+[ArrayExplicitLength]() reports that same count without building the position list:
+
+```wl
+ArrayExplicitLength[{{0, 1}, {2, 0}}]
+```
+
+<!-- => 2 -->
 
 ## Possible Issues
 
@@ -121,13 +131,3 @@ ArrayExplicitPositions[f[tau]]
 ```
 
 <!-- => Missing["NotExplicit"] -->
-
----
-
-For a [SparseArray]() the positions come back as a packed integer array rather than a plain list; apply [Normal]() where a plain list is required:
-
-```wl
-Developer`PackedArrayQ[ArrayExplicitPositions[SparseArray[{{0, 1}, {2, 0}}]]]
-```
-
-<!-- => True -->

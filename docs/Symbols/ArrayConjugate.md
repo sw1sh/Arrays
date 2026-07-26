@@ -130,13 +130,21 @@ conjugated = ArrayConjugate[if[tau]]
 
 <!-- => {Conjugate[InterpolatingFunction[...][tau]], Conjugate[InterpolatingFunction[...][tau]]} -->
 
-Substituting the parameter agrees with conjugating the evaluated array:
+Substituting the parameter evaluates the per-scalar interpolations:
 
 ```wl
-Max[Abs[(conjugated /. tau -> 0.5) - Conjugate[if[0.5]]]] < 1*^-4
+conjugated /. tau -> 0.5
 ```
 
-<!-- => True -->
+<!-- => {0.8775811345067771, -0.47942470176036955} -->
+
+Conjugating the evaluated array gives those values back to interpolation accuracy:
+
+```wl
+Conjugate[if[0.5]]
+```
+
+<!-- => {0.8775824340095093, -0.479425447892118} -->
 
 ## Possible Issues
 

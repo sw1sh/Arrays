@@ -332,7 +332,7 @@ ArrayObject[NumericArray[{1, 2}, "Integer32"]]["ElementType"]
 
 ---
 
-A container that stores no element type reports a missing value:
+Contrast a container that stores no element type, where the property reports a missing value in place of a type:
 
 ```wl
 ArrayObject[SparseArray[{1., 2.}]]["ElementType"]

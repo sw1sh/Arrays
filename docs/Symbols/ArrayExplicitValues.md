@@ -84,25 +84,35 @@ ArrayExplicitValues[{{}}]
 
 ## Properties and Relations
 
-[ArrayExplicitLength]() counts the values [ArrayExplicitValues]() returns:
+The number of values returned for a matrix with two nonzero entries:
 
 ```wl
-ArrayExplicitLength[{{0, 1}, {2, 0}}] === Length[ArrayExplicitValues[{{0, 1}, {2, 0}}]]
+Length[ArrayExplicitValues[{{0, 1}, {2, 0}}]]
 ```
 
-<!-- => True -->
+<!-- => 2 -->
 
 ---
 
-Together with [ArrayExplicitPositions]() and [ArrayDimensions](), the values rebuild the array:
+[ArrayExplicitLength]() reports that same count without building the value list:
+
+```wl
+ArrayExplicitLength[{{0, 1}, {2, 0}}]
+```
+
+<!-- => 2 -->
+
+---
+
+Together with [ArrayExplicitPositions]() and [ArrayDimensions](), the values rebuild the array they were read from:
 
 ```wl
 With[{a = SparseArray[{{0, 1}, {2, 0}}]},
-    SparseArray[Thread[Normal[ArrayExplicitPositions[a]] -> ArrayExplicitValues[a]], ArrayDimensions[a]] == a
+    Normal @ SparseArray[Thread[Normal[ArrayExplicitPositions[a]] -> ArrayExplicitValues[a]], ArrayDimensions[a]]
 ]
 ```
 
-<!-- => True -->
+<!-- => {{0, 1}, {2, 0}} -->
 
 ## Possible Issues
 

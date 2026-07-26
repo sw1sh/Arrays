@@ -25,21 +25,13 @@ RelatedGuides: [Arrays]
 
 <!-- #| annotation: 26.07.26: Design review - Best-effort with a fidelity guard: coercing pack forms are accepted only when a SetPrecision round trip shows every value survives at machine precision, so exact values are never silently destroyed and ArrayPack is always safe to apply (anything unpackable comes back unchanged). The Complex fallback exists for the mixed Integer/Complex lists Normal of a complex SparseArray produces. -->
 
-Pack a mixed integer and real list:
+Pack a mixed integer and real list; the integer is coerced to a machine real, giving a packed [Real]() array:
 
 ```wl
 ArrayPack[{1, 2.5}]
 ```
 
 <!-- => {1., 2.5} (packed Real array) -->
-
-The result is a packed array:
-
-```wl
-Developer`PackedArrayQ[ArrayPack[{1, 2.5}]]
-```
-
-<!-- => True -->
 
 ---
 
@@ -53,15 +45,23 @@ ArrayPack[{1/2, 1/3}]
 
 ## Scope
 
-[Normal]() of a complex-valued [SparseArray]() produces a mixed Integer/Complex list that the plain packing form cannot handle:
+[Normal]() of a complex-valued [SparseArray]() produces a mixed Integer/Complex list:
 
 ```wl
-Developer`PackedArrayQ[Developer`ToPackedArray[Normal[SparseArray[{1 -> 1, 2 -> I}, 3]]]]
+Normal[SparseArray[{1 -> 1, 2 -> I}, 3]]
 ```
 
-<!-- => False -->
+<!-- => {1, I, 0} (unpacked) -->
 
-The [Complex]() fallback packs it, and the values survive at machine precision:
+The plain packing form hands that list back element for element, still unpacked:
+
+```wl
+Developer`ToPackedArray[Normal[SparseArray[{1 -> 1, 2 -> I}, 3]]]
+```
+
+<!-- => {1, I, 0} (unpacked) -->
+
+The [Complex]() fallback coerces every entry to a machine complex, giving a packed array whose values survive at machine precision:
 
 ```wl
 ArrayPack[Normal[SparseArray[{1 -> 1, 2 -> I}, 3]]]

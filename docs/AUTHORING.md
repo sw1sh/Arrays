@@ -12,8 +12,18 @@ house rules below, which are maintainer decisions specific to this paclet.
   trenchcoat: split it into one cell per result, each with its own caption saying
   what that case shows.
 - **Never wrap a result to inspect it.** No `Head[...]`, no `MatchQ[...]`, no
-  structural probe standing in for the result. Evaluate the expression and show what
-  it actually returns.
+  `SameQ`/`TrueQ`, no `Developer`PackedArrayQ`, no predicate probe of any kind standing
+  in for the result. Evaluate the expression and show what it actually returns. This
+  includes cross-function equivalences: `f[x] === g[x]` returning `True` hides both
+  results, so show each side as its own cell and state the relationship in the
+  captions. The same defect wears several disguises, all forbidden as a cell's
+  result: `===`, `=!=`, `==`, `SameQ`, `TrueQ`, `Head`, `MatchQ`, a
+  `Developer`PackedArrayQ` check, and a numeric tolerance probe such as
+  `Max[Abs[a - b]] < 10^-4`. Show both sides instead; where they agree exactly, say
+  so in the caption, and where they differ (interpolation error, for instance) the
+  printed outputs make the size of the difference visible, which the boolean hid.
+  A property that the printed output cannot show at all belongs in
+  `## Details & Options` as a statement, not in an example as a boolean.
 - **Unevaluated output is shown in full**, exactly as the kernel returns it. The
   reader must see the expression come back unchanged; a `Head` or `MatchQ` test hides
   the very behavior the example exists to demonstrate. When the echoed form is long,

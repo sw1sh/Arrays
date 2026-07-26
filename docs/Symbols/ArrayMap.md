@@ -20,7 +20,7 @@ RelatedGuides: [Arrays]
 - The default level is `{-1}`; for a container of rank $r$ the element level is `{-1}` or `{r}`, and the *level* specification otherwise follows [Map]().
 - At element level a [SparseArray]() stays a [SparseArray](): *f* maps over the explicit values and is also applied to the implicit (background) value.
 - At any other level a [SparseArray]() densifies through [Normal]() before mapping.
-- A packed array repacks with the plain, non-coercing form of `` Developer`ToPackedArray ``, so exact results such as `{1/2, 1, 3/2}` keep value parity with [Map]() instead of being coerced to machine reals.
+- A packed array repacks with the plain, non-coercing form of `` Developer`ToPackedArray ``: a result whose values pack as they stand is returned packed, while exact results such as `{1/2, 1, 3/2}` keep value parity with [Map]() instead of being coerced to machine reals.
 - [NumericArray](), structured arrays such as [SymmetrizedArray]() and wrapper containers ([QuantityArray](), [Tabular](), ...) map over their materialized data and give an explicit array; a [QuantityArray]() maps over its magnitudes, not over [Quantity]() elements.
 - At element level a lazy container maps *f* over its interpolation value grid and reinterpolates, staying lazy, provided *f* keeps the grid values numeric ([Chop](), [N](), [Abs](), ...); otherwise [ArrayMap]() stays unevaluated.
 - At element level a symbolic container has no addressable elements, so *f* applies to the whole container, letting [Simplify]() and friends distribute over the symbolic tree; at other levels [ArrayMap]() stays unevaluated.
@@ -85,21 +85,13 @@ ArrayMap[# / 2 &, Developer`ToPackedArray[{1, 2, 3}]]
 
 <!-- => {1/2, 1, 3/2} -->
 
-A result that packs without coercion is repacked:
+A result whose values pack without coercion comes back repacked:
 
 ```wl
-doubled = ArrayMap[# * 2 &, Developer`ToPackedArray[{1, 2, 3}]]
+ArrayMap[# * 2 &, Developer`ToPackedArray[{1, 2, 3}]]
 ```
 
-<!-- => {2, 4, 6} -->
-
-The repacked result is a packed array:
-
-```wl
-Developer`PackedArrayQ[doubled]
-```
-
-<!-- => True -->
+<!-- => {2, 4, 6} (packed Integer array) -->
 
 ---
 
@@ -152,13 +144,23 @@ ArrayMap[Simplify, MatrixSymbol["M", {2, 3}]]
 
 ## Properties and Relations
 
-At element level, [ArrayMap]() on a [SparseArray]() agrees with [Map]() on its [Normal]() form:
+At element level, [ArrayMap]() squares the elements of a [SparseArray]() and the result materializes to:
 
 ```wl
-Normal[ArrayMap[#^2 &, SparseArray[{{0, 1}, {2, 0}}]]] === Map[#^2 &, Normal[SparseArray[{{0, 1}, {2, 0}}]], {-1}]
+Normal[ArrayMap[#^2 &, SparseArray[{{0, 1}, {2, 0}}]]]
 ```
 
-<!-- => True -->
+<!-- => {{0, 1}, {4, 0}} -->
+
+---
+
+[Map]() at level `{-1}` on the [Normal]() form gives the same array:
+
+```wl
+Map[#^2 &, Normal[SparseArray[{{0, 1}, {2, 0}}]], {-1}]
+```
+
+<!-- => {{0, 1}, {4, 0}} -->
 
 ## Possible Issues
 

@@ -126,13 +126,23 @@ ArrayContract[MatrixSymbol["M", {2, 3}], {}]
 
 ## Properties and Relations
 
-On explicit containers [ArrayContract]() agrees with [TensorContract]():
+Contracting both levels of an explicit container takes its trace:
 
 ```wl
-ArrayContract[SparseArray[{{1, 2}, {3, 4}}], {{1, 2}}] == TensorContract[{{1, 2}, {3, 4}}, {{1, 2}}]
+ArrayContract[SparseArray[{{1, 2}, {3, 4}}], {{1, 2}}]
 ```
 
-<!-- => True -->
+<!-- => 5 -->
+
+---
+
+[TensorContract]() on the dense form gives that same value:
+
+```wl
+TensorContract[{{1, 2}, {3, 4}}, {{1, 2}}]
+```
+
+<!-- => 5 -->
 
 ---
 

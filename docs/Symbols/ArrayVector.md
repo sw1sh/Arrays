@@ -116,13 +116,23 @@ ArrayDimensions[ArrayVector[sa]]
 
 ---
 
-The raw CSR route agrees with [Flatten]():
+The raw CSR route stores its two values at the first and the last position of the flattened vector:
 
 ```wl
-ArrayVector[sa] == Flatten[sa]
+ArrayExplicitPositions[ArrayVector[sa]]
 ```
 
-<!-- => True -->
+<!-- => {{1}, {4096}} -->
+
+---
+
+[Flatten]() stores them at those same two positions:
+
+```wl
+ArrayExplicitPositions[Flatten[sa]]
+```
+
+<!-- => {{1}, {4096}} -->
 
 ---
 
@@ -143,8 +153,6 @@ ArrayLazyQ[flat]
 
 <!-- => True -->
 
----
-
 The flattened container has rank 1:
 
 ```wl
@@ -153,23 +161,41 @@ ArrayDimensions[flat]
 
 <!-- => {4} -->
 
-Substituting the parameter matches flattening the original application:
+Substituting the parameter reads the reinterpolated grid:
 
 ```wl
-Max[Abs[(flat /. tau -> 0.5) - Flatten[fM[0.5]]]] < 1*^-4
+flat /. tau -> 0.5
 ```
 
-<!-- => True -->
+<!-- => {0.8775811345067782, 0.4794247017603684, -0.4794247017603684, 0.8775811345067782} -->
+
+Flattening the original application at the same parameter value gives those values back to interpolation accuracy:
+
+```wl
+Flatten[fM[0.5]]
+```
+
+<!-- => {0.8775824340095101, 0.4794254478921167, -0.4794254478921167, 0.8775824340095101} -->
 
 ## Properties and Relations
 
-For an explicit container, [ArrayVector]() agrees with [Flatten]() of the [ArrayMaterialize]() data:
+For an explicit container, [ArrayVector]() flattens in place, keeping the [SparseArray]():
 
 ```wl
-ArrayVector[SparseArray[{{0, 1}, {2, 0}}]] == Flatten[ArrayMaterialize[SparseArray[{{0, 1}, {2, 0}}]]]
+Normal[ArrayVector[SparseArray[{{0, 1}, {2, 0}}]]]
 ```
 
-<!-- => True -->
+<!-- => {0, 1, 2, 0} -->
+
+---
+
+[Flatten]() of the [ArrayMaterialize]() data gives that same vector:
+
+```wl
+Flatten[ArrayMaterialize[SparseArray[{{0, 1}, {2, 0}}]]]
+```
+
+<!-- => {0, 1, 2, 0} -->
 
 ---
 

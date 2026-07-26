@@ -54,13 +54,23 @@ ArrayExplicitLength[{{}}]
 
 ## Properties and Relations
 
-[ArrayExplicitLength]() counts the values of [ArrayExplicitValues]():
+The count reported for a matrix with two nonzero entries:
 
 ```wl
-ArrayExplicitLength[{{0, 1}, {2, 0}}] === Length[ArrayExplicitValues[{{0, 1}, {2, 0}}]]
+ArrayExplicitLength[{{0, 1}, {2, 0}}]
 ```
 
-<!-- => True -->
+<!-- => 2 -->
+
+---
+
+Taking [Length]() of the [ArrayExplicitValues]() list arrives at the same count:
+
+```wl
+Length[ArrayExplicitValues[{{0, 1}, {2, 0}}]]
+```
+
+<!-- => 2 -->
 
 ## Possible Issues
 

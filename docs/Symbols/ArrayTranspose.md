@@ -181,13 +181,21 @@ ArrayLazyQ[transposed]
 
 <!-- => True -->
 
-Substituting the parameter agrees with transposing the evaluated array:
+Substituting the parameter reads the reinterpolated grid:
 
 ```wl
-Max[Abs[(transposed /. tau -> 0.5) - Transpose[if[0.5]]]] < 1*^-4
+transposed /. tau -> 0.5
 ```
 
-<!-- => True -->
+<!-- => {{0.8775811345067782, -0.4794247017603684}, {0.4794247017603684, 0.8775811345067782}} -->
+
+Transposing the evaluated array gives those values back to interpolation accuracy:
+
+```wl
+Transpose[if[0.5]]
+```
+
+<!-- => {{0.8775824340095101, -0.4794254478921167}, {0.4794254478921167, 0.8775824340095101}} -->
 
 ### Symbolic containers
 

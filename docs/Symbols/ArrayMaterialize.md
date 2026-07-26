@@ -134,13 +134,21 @@ expansion = ArrayMaterialize[f[tau]]
 
 <!-- => {InterpolatingFunction[{{0., 1.}}, <>][tau], InterpolatingFunction[{{0., 1.}}, <>][tau]} -->
 
-Substituting the parameter recovers the values of the original application:
+Substituting the parameter evaluates the per-scalar interpolations:
 
 ```wl
-Max[Abs[(expansion /. tau -> 0.5) - f[0.5]]] < 1*^-4
+expansion /. tau -> 0.5
 ```
 
-<!-- => True -->
+<!-- => {0.8775811345067771, -0.47942470176036955} -->
+
+The original application at that parameter value gives those values back to interpolation accuracy:
+
+```wl
+f[0.5]
+```
+
+<!-- => {0.8775824340095093, -0.479425447892118} -->
 
 ## Properties and Relations
 
@@ -196,8 +204,6 @@ snapshot
 ```
 
 <!-- => {1., 2., 3.} -->
-
----
 
 The store itself carries the appended element:
 

@@ -58,21 +58,13 @@ ReshapeArray[{1, 2, 3, 4}, {2, 3}, 0]
 
 ### Explicit containers
 
-A packed vector reshapes to a packed matrix:
+A packed vector reshapes to a matrix that is itself packed:
 
 ```wl
-repacked = ReshapeArray[Developer`ToPackedArray[N @ {1, 2, 3, 4}], {2, 2}]
+ReshapeArray[Developer`ToPackedArray[N @ {1, 2, 3, 4}], {2, 2}]
 ```
 
-<!-- => {{1., 2.}, {3., 4.}} -->
-
-The result is still packed:
-
-```wl
-Developer`PackedArrayQ[repacked]
-```
-
-<!-- => True -->
+<!-- => {{1., 2.}, {3., 4.}} (packed Real array) -->
 
 ---
 
@@ -143,13 +135,21 @@ ArrayLazyQ[reshaped]
 
 <!-- => True -->
 
-Substituting the parameter agrees with reshaping the evaluated array:
+Substituting the parameter reads the reshaped grid:
 
 ```wl
-Max[Abs[(reshaped /. tau -> 0.5) - Flatten[if[0.5]]]] < 1*^-4
+reshaped /. tau -> 0.5
 ```
 
-<!-- => True -->
+<!-- => {0.8775811345067782, 0.4794247017603684, -0.4794247017603684, 0.8775811345067782} -->
+
+Reshaping the evaluated array gives those values back to interpolation accuracy:
+
+```wl
+Flatten[if[0.5]]
+```
+
+<!-- => {0.8775824340095101, 0.4794254478921167, -0.4794254478921167, 0.8775824340095101} -->
 
 ## Possible Issues
 

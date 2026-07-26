@@ -9,35 +9,27 @@ PackageExport[ArrayMap]
 PackageExport[ArrayReplaceAll]
 PackageExport[ArrayConjugate]
 
-(* Vector.wl rebuilds lazy containers the same way for Flatten and reshape. *)
-PackageScope[reinterpolate]
-
-
-ArrayTranspose::usage = "ArrayTranspose[a, perm] transposes an array container by the given permutation, composing permutations of nested Transpose forms, transposing the value grid of a lazy container so it stays lazy, and keeping symbolic containers in unevaluated form."
+ArrayTranspose::usage = "ArrayTranspose[a, perm] transposes an array container by the given permutation, composing permutations of nested Transpose forms, and keeping symbolic containers in unevaluated form; a lazy container stays lazy where its head supplies a lazy-preserving rebuild (the value grid of an InterpolatingFunction, the branch values of a Piecewise, the body of a Function) and materializes through ArrayMaterialize where it does not, as for a ParametricFunction."
 
 ArrayContract::usage = "ArrayContract[a, pairs] contracts the given index pairs of an array container, keeping symbolic containers in inactive TensorContract form.\nArrayContract[{a1, a2, ...}, pairs] contracts index pairs of the inactive tensor product of the given containers; a plain List that is itself an array is treated as a single array, matching the SparseArray form."
 
-ArrayPart::usage = "ArrayPart[a, {i1, i2, ...}] gives the part of an array container at the given indices, slicing symbolic containers structurally; All entries keep the corresponding level."
+ArrayPart::usage = "ArrayPart[a, {i1, i2, ...}] gives the part of an array container at the given indices, slicing symbolic containers structurally and expanding a lazy container per scalar first, since Part on an inert lazy form reaches the expression tree rather than the array; a deferred structural tree, whose leaves are all explicit, is activated first for the same reason, and a structural tree that carries a symbolic container is left unevaluated rather than sliced wrongly; All entries keep the corresponding level."
 
 SimplifyArray::usage = "SimplifyArray[a] removes trivial structural wrappers such as empty contractions, singleton tensor products and identity transposes from a symbolic array expression."
 
 ArrayName::usage = "ArrayName[a] gives the name of a symbolic array container: the first argument of VectorSymbol, MatrixSymbol or ArraySymbol, an atomic symbol itself, and None otherwise."
 
-ArrayMap::usage = "ArrayMap[f, a] maps f over the deepest elements of an explicit array container, preserving SparseArray structure and repacking packed arrays where the result packs without coercion.\nArrayMap[f, a, level] maps at the given level, densifying a SparseArray when level is not its element level {-1} or {rank}. At element level a lazy container remaps its value grid and stays lazy when f keeps the values numeric, and a symbolic container applies f to the whole container; otherwise ArrayMap is left unevaluated."
+ArrayMap::usage = "ArrayMap[f, a] maps f over the deepest elements of an explicit array container, preserving SparseArray structure and repacking packed arrays where the result packs without coercion.\nArrayMap[f, a, level] maps at the given level, densifying a SparseArray when level is not its element level {-1} or {rank}. At element level a lazy container rebuilds and stays lazy where its head supplies a lazy-preserving rebuild; a head with no rebuild, such as a ParametricFunction, and any lazy container mapped off element level materialize through ArrayMaterialize, since a map that crosses index levels commutes with no rebuild. An InterpolatingFunction whose remapped value grid stops being numeric leaves ArrayMap unevaluated. A deferred structural tree, whose leaves are all explicit, is activated and f is mapped over its elements; a leafless symbolic container applies f to the whole container at element level; otherwise ArrayMap is left unevaluated."
 
-ArrayReplaceAll::usage = "ArrayReplaceAll[a, rules] applies rules to an array container: for a lazy container the whole expression is substituted at once, so substituting all parameters evaluates the array-valued function a single time; for a SparseArray the rules map over the explicit values; a structured atom such as SymmetrizedArray or a wrapper container materializes first, since ReplaceAll does not penetrate such atoms; any other container uses ReplaceAll."
+ArrayReplaceAll::usage = "ArrayReplaceAll[a, rules] applies rules to an array container: for a lazy container the whole expression is substituted at once, so substituting all parameters evaluates the array-valued function a single time; a Function is the exception in form only, since its parameters are bound rather than free - a rule keyed on every parameter applies the Function, again a single whole-array evaluation, a rule keyed on only some of them curries and gives a Function of the parameters that are still free, and the remaining rules rewrite the free symbols of its body; the same bound-parameter treatment reaches an unapplied Function carried INSIDE an explicit container, such as the per-scalar expansion of a Function container or one element of it, which a plain ReplaceAll would rewrite into Function[0.5, ...]; for a SparseArray the rules map over the explicit values; a structured atom such as SymmetrizedArray or a wrapper container materializes first, since ReplaceAll does not penetrate such atoms; any other container uses ReplaceAll."
 
-ArrayConjugate::usage = "ArrayConjugate[a] conjugates an array container, preserving SparseArray, packed and NumericArray containers, materializing lazy containers, and keeping symbolic containers in unevaluated form."
+ArrayConjugate::usage = "ArrayConjugate[a] conjugates an array container, preserving SparseArray, packed and NumericArray containers, keeping a lazy container lazy where its head supplies a lazy-preserving rebuild and materializing it where it does not, and keeping symbolic containers in unevaluated form."
 
 
-(* Structural rebuild of a single-parameter array-valued InterpolatingFunction:
-   the value array at every grid point is transformed by g and reinterpolated,
-   keeping the container lazy for flatten, reshape, transpose and map. *)
-
-reinterpolate[g_, f_InterpolatingFunction] := Interpolation[
-    Thread[{f["Grid"], g /@ f["ValuesOnGrid"]}],
-    InterpolationOrder -> f["InterpolationOrder"]
-]
+(* The lazy-preserving structural rebuild is per head and lives in the registry
+   of Lazy.wl: lazyStructuralOp rebuilds where the head supplies one and
+   materializes where it does not.  Flatten, reshape and transpose in Vector.wl
+   go through the same entry point. *)
 
 
 ArrayName[t_Symbol ? AtomQ] := t
@@ -53,6 +45,23 @@ ArrayName[___] := None
 
 (* setDimensions lives in Shape.wl: re-registering an atomic symbol is a shape
    operation on its $Assumptions entry. *)
+
+(* Part on an inert lazy form reaches the expression TREE, not the array:
+   ifn[t][[1]] gives t, a Piecewise indexes its own branch list, and an
+   unapplied Function hands back its parameter symbol.  A lazy container is
+   therefore expanded per scalar first, and the part is taken of that explicit
+   array of scalar lazy expressions. *)
+ArrayPart[a_ ? ArrayLazyQ, is : {__}, k_ : 0] := ArrayPart[ArrayMaterialize[a], is, k]
+
+(* Part on a structural tree reaches the expression TREE for the same reason:
+   the first part of Inactive[TensorContract][inner, c] is inner, and the first
+   part of Inactive[TensorProduct][a, b] is a, which even has the right SHAPE -
+   so the wrong value is silent.  A DEFERRED tree therefore materializes first,
+   exactly as a lazy container does.  A tree that carries a symbolic container
+   has no materialization and no structural slice rule here, so the generic
+   clause below declines it and ArrayPart is left unevaluated rather than
+   handing back an operand of the node. *)
+ArrayPart[a_ ? deferredTreeQ, is : {__}, k_ : 0] := ArrayPart[ArrayMaterialize[a], is, k]
 
 ArrayPart[t_, {i_, is___}, k_ : 0] := With[{nest = Nest[#[] &, #, k] &},
     If[ i === All,
@@ -72,7 +81,7 @@ ArrayPart[t_, {i_, is___}, k_ : 0] := With[{nest = Nest[#[] &, #, k] &},
             0
         ]
     ]
-]
+] /; ! structuralNodeQ[t]
 
 ArrayPart[t_, {}, ___] := t
 
@@ -85,8 +94,8 @@ ArrayTranspose[t_, perm_] := If[ZeroArrayQ[t], {}, SimplifyArray @ Transpose[t, 
 
 ArrayTranspose[(Verbatim[Transpose] | Inactive[Transpose])[t_, perm1_], perm2_] := ArrayTranspose[t, PermutationList[PermutationProduct[perm1, perm2]]]
 
-ArrayTranspose[expr : (f_InterpolatingFunction)[parameter_], perm_] :=
-    reinterpolate[Transpose[#, Replace[perm, m_ <-> n_ :> Cycles[{{m, n}}]]] &, f][parameter] /; ArrayLazyQ[expr]
+ArrayTranspose[a_ ? ArrayLazyQ, perm_] :=
+    lazyStructuralOp[Transpose[#, Replace[perm, m_ <-> n_ :> Cycles[{{m, n}}]]] &, a]
 
 
 (* A list is treated as a list of arrays only when its elements are containers
@@ -140,46 +149,90 @@ ArrayMap[f_, a_ ? wrapperExplicitQ, level_ : {-1}] := Map[f, ArrayMaterialize[a]
 
 ArrayMap[f_, a_ ? ArrayExplicitQ, level_ : {-1}] := Map[f, Normal[a], level]
 
-(* A lazy container maps element-wise over the value grid and reinterpolates,
-   staying lazy, when f keeps the grid values numeric (Chop, N, Abs, ...);
-   otherwise ArrayMap stays unevaluated. *)
-ArrayMap[f_, expr : (g_InterpolatingFunction)[parameter_], level_ : {-1}] := Module[{values},
-    Interpolation[
-        Thread[{g["Grid"], values}],
-        InterpolationOrder -> g["InterpolationOrder"]
-    ][parameter] /; ArrayLazyQ[expr] && elementLevelQ[level, ArrayRank[expr]] &&
-        ArrayQ[values = Map[f, g["ValuesOnGrid"], {-1}], _, NumericQ]
+(* A lazy container maps at element level through its head's lazy-preserving
+   rebuild and stays lazy: the value grid of an InterpolatingFunction is
+   remapped and reinterpolated, the branch values of a Piecewise are mapped in
+   place, the body of a Function is mapped and re-abstracted.  A head with no
+   rebuild at all (ParametricFunction) materializes through ArrayMaterialize and
+   maps the explicit array, at any level.  A rebuild that DECLINES - an
+   InterpolatingFunction whose remapped grid values stop being numeric is no
+   longer an InterpolatingFunction - leaves ArrayMap unevaluated rather than
+   silently materializing a container the caller asked to keep lazy. *)
+
+(* Element level is spelled {rank} on both branches, never {-1}: the elements of
+   a materialized lazy container are scalar EXPRESSIONS, and {-1} would map f
+   over their leaves - the parameter symbols inside an Indexed expansion - not
+   over the elements. *)
+
+(* Off element level there is nothing to keep lazy - a map that crosses index
+   levels does not commute with any of the rebuilds - so every lazy container
+   materializes there, whether or not its head has a rebuild.  Making that
+   depend on the presence of a Rebuild key would decide the same call two
+   different ways for two heads on the same tier. *)
+
+lazyMapResult[f_, a_, level_] := With[{rank = ArrayRank[a]},
+    If[
+        lazyRebuildableQ[a] && elementLevelQ[level, rank],
+        lazyRebuild[Map[f, #, {rank}] &, a],
+        Map[f, ArrayMaterialize[a], Replace[level, {-1} :> {rank}]]
+    ]
 ]
 
-(* Symbolic containers have no addressable elements, so an element-level map
-   applies f to the whole container: Simplify, ComplexExpand and friends
-   distribute over the symbolic tree instead of going silently inert. *)
+ArrayMap[f_, a_ ? ArrayLazyQ, level_ : {-1}] := Module[{result},
+    result /; ! MissingQ[result = lazyMapResult[f, a, level]]
+]
+
+(* A deferred tree DOES have addressable elements, they are only not computed
+   yet, so a map over it is a map over those elements and not an application of
+   f to the node.  Applying f to the node would rewrite the contraction
+   SPECIFICATION along with the data - N turns the index pair {{2, 3}} into
+   {{2., 3.}} and TensorContract then rejects it - and mapping f over the LEAVES
+   instead would apply it once per leaf, which nothing but the identity
+   survives.  The level is spelled {rank} for the same reason as the lazy tier:
+   {-1} would map f over the leaves of scalar EXPRESSIONS rather than over the
+   elements. *)
+ArrayMap[f_, a_ ? deferredTreeQ, level_ : {-1}] :=
+    Map[f, ArrayMaterialize[a], Replace[level, {-1} :> {ArrayRank[a]}]]
+
+(* The leafless symbolic containers have no addressable elements, so an
+   element-level map applies f to the whole container: Simplify, ComplexExpand
+   and friends distribute over the symbolic tree instead of going silently
+   inert. *)
 ArrayMap[f_, a_ ? ArraySymbolicQ, level_ : {-1}] := f[a] /; elementLevelQ[level, ArrayRank[a]]
 
 
 (* ArrayReplaceAll on a lazy container substitutes the WHOLE expression at once:
    substituting all parameters evaluates the array-valued function a single time,
-   yielding an explicit (typically packed) array. *)
+   yielding an explicit (typically packed) array.  The registry decides how, so
+   that a Function - whose parameter is BOUND, and which a plain ReplaceAll
+   would rewrite into Function[0.5, ...] - is applied instead of rewritten,
+   still exactly one whole-array evaluation. *)
 
-ArrayReplaceAll[a_ ? ArrayLazyQ, rules_] := a /. rules
+ArrayReplaceAll[a_ ? ArrayLazyQ, rules_] := lazySubstitute[a, rules]
 
 ArrayReplaceAll[a_SparseArray, rules_] := SparseArray[
-    Thread[a["ExplicitPositions"] -> (a["ExplicitValues"] /. rules)],
+    Thread[a["ExplicitPositions"] -> scopedReplaceAll[a["ExplicitValues"], rules]],
     Dimensions[a],
-    a["ImplicitValue"] /. rules
+    scopedReplaceAll[a["ImplicitValue"], rules]
 ]
 
 (* Structured atoms are substitution-opaque: sa /. rules returns a
    SymmetrizedArray whose elements are untouched (ReplaceAll does not
    penetrate the atom), a silent no-op.  Substitution therefore goes
    Normal -> ReplaceAll, densifying. *)
-ArrayReplaceAll[a : _SymmetrizedArray | _StructuredArray, rules_] := ReplaceAll[Normal[a], rules]
+ArrayReplaceAll[a : _SymmetrizedArray | _StructuredArray, rules_] := scopedReplaceAll[Normal[a], rules]
 
 (* Wrapper containers substitute on the materialized data for the same
    reason: rules cannot reach inside the wrapper atoms. *)
-ArrayReplaceAll[a_ ? wrapperExplicitQ, rules_] := ReplaceAll[ArrayMaterialize[a], rules]
+ArrayReplaceAll[a_ ? wrapperExplicitQ, rules_] := scopedReplaceAll[ArrayMaterialize[a], rules]
 
-ArrayReplaceAll[a_, rules_] := ReplaceAll[a, rules]
+(* Every explicit path goes through scopedReplaceAll rather than ReplaceAll: an
+   explicit array can CARRY bound-parameter forms - the per-scalar expansion of a
+   Function container is an array of unapplied scalar Functions, and so is a
+   single element taken out of one by ArrayPart - and a plain ReplaceAll would
+   rewrite their parameter specifications instead of applying them.  An array
+   with no Function anywhere in it takes the plain path unchanged. *)
+ArrayReplaceAll[a_, rules_] := scopedReplaceAll[a, rules]
 
 
 (* Conjugate is not natively supported on NumericArray, so it converts through
@@ -193,6 +246,14 @@ ArrayConjugate[a_ ? opaqueWrapperQ] := Conjugate[ArrayMaterialize[a]]
 
 ArrayConjugate[a_ ? ArrayExplicitQ] := Conjugate[a]
 
-ArrayConjugate[a_ ? ArrayLazyQ] := Conjugate[ArrayMaterialize[a]]
+(* Conjugation goes through the same rebuild-or-materialize route as the
+   structural ops, so a rebuildable head keeps its laziness instead of being
+   flattened into an array of inert Conjugate[Function[...]] elements.
+   Conjugating an InterpolatingFunction grid and reinterpolating is exact AT THE
+   GRID POINTS, since interpolation is a real-coefficient combination of the grid
+   values; between them the rebuild reinterpolates from the values alone, so an
+   NDSolve-produced interpolant, whose Hermite derivative data the value grid
+   does not carry, is reproduced only to interpolation accuracy. *)
+ArrayConjugate[a_ ? ArrayLazyQ] := lazyStructuralOp[Conjugate, a]
 
 ArrayConjugate[a_ ? ArraySymbolicQ] := Conjugate[a]

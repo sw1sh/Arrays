@@ -10,6 +10,13 @@ $sparse = SparseArray[{{0, 1}, {2, 0}}]
 $packed = Developer`ToPackedArray[N[{{1, 2}, {3, 4}}]]
 $numeric = NumericArray[{{1., 0.}, {0., 2.}}]
 
+$pf = ParametricNDSolveValue[{v'[t] == {{0, pa}, {-pa, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}, {pa}]
+$pfLazy = $pf[aa][tt]
+$pfM = ParametricNDSolveValue[{m'[t] == {{0, pa}, {-pa, 0}} . m[t], m[0] == {{1., 0.}, {0., 1.}}}, m, {t, 0, 1}, {pa}]
+$pfLazyM = $pfM[aa][tt]
+$fn = Function[fnT, {{Cos[fnT], -Sin[fnT]}, {Sin[fnT], Cos[fnT]}}]
+$pw = Piecewise[{{{{1., 2.}, {3., 4.}}, zz < 0}}, {{5., 6.}, {7., 8.}}]
+
 
 BeginTestSection["flatten-reshape-pad"]
 
@@ -78,6 +85,67 @@ VerificationTest[
     Head[PadArray[$sparse, 1]],
     SparseArray,
     TestID -> "pad-sparse-stays-sparse"
+]
+
+EndTestSection[]
+
+
+BeginTestSection["flatten-reshape - admitted lazy heads"]
+
+(* A Function composes and a Piecewise transforms its branch values, so both
+   flatten and reshape without leaving the lazy tier. *)
+VerificationTest[
+    With[{flat = ArrayVector[$fn]},
+        {ArrayLazyQ[flat], ArrayDimensions[flat], ArrayReplaceAll[flat, fnT -> 0.5] == Flatten[ArrayReplaceAll[$fn, fnT -> 0.5]]}
+    ],
+    {True, {4}, True},
+    TestID -> "Lazy-Function-flatten-stays-lazy"
+]
+
+VerificationTest[
+    With[{flat = ArrayVector[$pw]},
+        {ArrayLazyQ[flat], ArrayDimensions[flat], ArrayReplaceAll[flat, zz -> -1]}
+    ],
+    {True, {4}, {1., 2., 3., 4.}},
+    TestID -> "Lazy-Piecewise-flatten-stays-lazy"
+]
+
+VerificationTest[
+    With[{reshaped = ReshapeArray[$fn, {4}]},
+        {ArrayLazyQ[reshaped], ArrayReplaceAll[reshaped, fnT -> 0.5] == Flatten[ArrayReplaceAll[$fn, fnT -> 0.5]]}
+    ],
+    {True, True},
+    TestID -> "Lazy-Function-reshape-stays-lazy"
+]
+
+VerificationTest[
+    With[{reshaped = ReshapeArray[$pw, {2, 3}, 0.]},
+        {ArrayLazyQ[reshaped], ArrayReplaceAll[reshaped, zz -> -1]}
+    ],
+    {True, {{1., 2., 3.}, {4., 0., 0.}}},
+    TestID -> "Lazy-Piecewise-reshape-with-padding-stays-lazy"
+]
+
+(* A ParametricFunction declares no rebuild, so flatten materializes and says so
+   by no longer being lazy; the values still substitute identically. *)
+VerificationTest[
+    With[{flat = ArrayVector[$pfLazyM]},
+        {
+            ArrayLazyQ[flat],
+            ArrayDimensions[flat],
+            (flat /. {aa -> 1., tt -> 0.5}) == Flatten[ArrayReplaceAll[$pfLazyM, {aa -> 1., tt -> 0.5}]]
+        }
+    ],
+    {False, {4}, True},
+    TestID -> "Lazy-ParametricFunction-flatten-materializes"
+]
+
+(* A rank-1 lazy container of any head passes straight through: flattening it
+   could only turn a lazy container into a materialized one for no gain. *)
+VerificationTest[
+    ArrayVector[$pfLazy] === $pfLazy,
+    True,
+    TestID -> "Lazy-rank1-flatten-passthrough"
 ]
 
 EndTestSection[]

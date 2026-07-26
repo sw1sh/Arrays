@@ -5,9 +5,9 @@ PackageExport[ReshapeArray]
 PackageExport[PadArray]
 
 
-ArrayVector::usage = "ArrayVector[a] flattens an explicit array container to a vector, using a raw CSR construction for a SparseArray of rank above 11; a lazy container flattens its value grid and stays lazy; scalar numeric input passes through unchanged."
+ArrayVector::usage = "ArrayVector[a] flattens an explicit array container to a vector, using a raw CSR construction for a SparseArray of rank above 11; a lazy container stays lazy where its head supplies a lazy-preserving rebuild and materializes through ArrayMaterialize where it does not, as for a ParametricFunction; a rank-1 container of any tier passes through unchanged, as does scalar numeric input."
 
-ReshapeArray::usage = "ReshapeArray[a, dims] reshapes an explicit array container to the given dimensions, preserving the container where ArrayReshape does; a lazy container reshapes its value grid and stays lazy.\nReshapeArray[a, dims, pad] pads with pad when the reshape needs more elements."
+ReshapeArray::usage = "ReshapeArray[a, dims] reshapes an explicit array container to the given dimensions, preserving the container where ArrayReshape does; a lazy container stays lazy where its head supplies a lazy-preserving rebuild and materializes through ArrayMaterialize where it does not, as for a ParametricFunction.\nReshapeArray[a, dims, pad] pads with pad when the reshape needs more elements."
 
 PadArray::usage = "PadArray[a, spec] pads an explicit array container with zeros according to spec, preserving the container where ArrayPad does; a NumericArray converts through Normal and re-wraps.\nPadArray[a, spec, padding] pads with the given padding."
 
@@ -49,8 +49,10 @@ ArrayVector[a_ ? opaqueWrapperQ] := Flatten[ArrayMaterialize[a]]
 
 ArrayVector[a_ ? ArrayExplicitQ] := Flatten[a]
 
-ArrayVector[expr : (f_InterpolatingFunction)[parameter_]] :=
-    If[ArrayRank[expr] == 1, expr, reinterpolate[Flatten, f][parameter]] /; ArrayLazyQ[expr]
+(* A rank-1 lazy container is already a vector, so it passes through before any
+   rebuild is attempted: flattening it could only turn a lazy container into a
+   materialized one for no gain. *)
+ArrayVector[a_ ? ArrayLazyQ] := If[ArrayRank[a] == 1, a, lazyStructuralOp[Flatten, a]]
 
 
 (* === reshape and pad (non-colliding System equivalents) === *)
@@ -65,11 +67,11 @@ ReshapeArray[a_ ? ArrayExplicitQ, dims : {___Integer ? NonNegative}] := ArrayRes
 
 ReshapeArray[a_ ? ArrayExplicitQ, dims : {___Integer ? NonNegative}, pad_] := ArrayReshape[a, dims, pad]
 
-ReshapeArray[expr : (f_InterpolatingFunction)[parameter_], dims : {___Integer ? NonNegative}] :=
-    reinterpolate[ArrayReshape[#, dims] &, f][parameter] /; ArrayLazyQ[expr]
+ReshapeArray[a_ ? ArrayLazyQ, dims : {___Integer ? NonNegative}] :=
+    lazyStructuralOp[ArrayReshape[#, dims] &, a]
 
-ReshapeArray[expr : (f_InterpolatingFunction)[parameter_], dims : {___Integer ? NonNegative}, pad_] :=
-    reinterpolate[ArrayReshape[#, dims, pad] &, f][parameter] /; ArrayLazyQ[expr]
+ReshapeArray[a_ ? ArrayLazyQ, dims : {___Integer ? NonNegative}, pad_] :=
+    lazyStructuralOp[ArrayReshape[#, dims, pad] &, a]
 
 
 (* ArrayPad does not support NumericArray, so it converts through Normal and

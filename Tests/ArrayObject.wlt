@@ -24,6 +24,11 @@ $store = CreateDataStructure["DynamicArray", {1., 2., 3.}]
 $if = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}]
 $lazy = $if[tau]
 
+$pf = ParametricNDSolveValue[{v'[t] == {{0, pa}, {-pa, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}, {pa}]
+$pfLazy = $pf[aa][tt]
+$fn = Function[fnT, {{Cos[fnT], -Sin[fnT]}, {Sin[fnT], Cos[fnT]}}]
+$pw = Piecewise[{{{{1., 2.}, {3., 4.}}, zz < 0}}, {{5., 6.}, {7., 8.}}]
+
 $vec = VectorSymbol["v", 3]
 $mat = MatrixSymbol["M", {2, 3}]
 $arr = ArraySymbol["T", {2, 3, 4}]
@@ -432,6 +437,95 @@ VerificationTest[
     ],
     {True, True},
     TestID -> "arrayobject-box-quantityarray-unit-row"
+]
+
+EndTestSection[]
+
+
+BeginTestSection["arrayobject - admitted lazy heads"]
+
+VerificationTest[
+    ArrayObjectQ /@ ArrayObject /@ {$pfLazy, $fn, $pw},
+    {True, True, True},
+    TestID -> "Lazy-arrayobject-construction"
+]
+
+(* Kind is derived from the head chain, so a newly admitted head reports its own
+   name with no lookup table to update: the chain of a fully applied
+   ParametricFunction takes one step more than an InterpolatingFunction and
+   still lands on the constructor symbol. *)
+VerificationTest[
+    Map[ArrayObject[#]["Kind"] &, {$lazy, $pfLazy, $fn, $pw}],
+    {"InterpolatingFunction", "ParametricFunction", "Function", "Piecewise"},
+    TestID -> "Lazy-arrayobject-property-kind"
+]
+
+VerificationTest[
+    Map[
+        {#["Tier"], #["Dimensions"], #["Rank"], #["ComputeNativeQ"], #["NumericQ"], #["NumberQ"], #["ElementType"]} &,
+        ArrayObject /@ {$pfLazy, $fn, $pw}
+    ],
+    {
+        {"Lazy", {2}, 1, False, False, False, Missing["NotApplicable"]},
+        {"Lazy", {2, 2}, 2, False, False, False, Missing["NotApplicable"]},
+        {"Lazy", {2, 2}, 2, False, False, False, Missing["NotApplicable"]}
+    },
+    TestID -> "Lazy-arrayobject-properties"
+]
+
+(* The bare and partially applied ParametricFunction are not containers, so the
+   handle declines them the same way it declines any other unsupported input. *)
+VerificationTest[
+    Quiet[{Head[ArrayObject[$pf]], Head[ArrayObject[$pf[aa]]]}],
+    {ArrayObject, ArrayObject},
+    TestID -> "Lazy-arrayobject-declines-non-container-parametric-arities"
+]
+
+VerificationTest[
+    Map[
+        With[{obj = ArrayObject[#]}, {ArrayContainerQ[obj], ArrayLazyQ[obj], ArrayExplicitQ[obj], ArraySymbolicQ[obj], ArrayDimensions[obj], ArrayRank[obj]}] &,
+        {$pfLazy, $fn, $pw}
+    ],
+    {
+        {True, True, False, False, {2}, 1},
+        {True, True, False, False, {2, 2}, 2},
+        {True, True, False, False, {2, 2}, 2}
+    },
+    TestID -> "Lazy-arrayobject-upvalues"
+]
+
+(* Every new head draws a full box from shape-only probes.  A ParametricFunction
+   is the sharp case: its shape comes from a probe solve, which is not a
+   materialization of the container, and the cached shape means the box does not
+   even enter the solver on a redraw. *)
+VerificationTest[
+    Block[{ArrayMaterialize},
+        ArrayMaterialize[___] := Throw["materialized", "arrayobject-box-lazy"];
+        Map[
+            Catch[ToBoxes[ArrayObject[#], StandardForm]; "no-materialize", "arrayobject-box-lazy"] &,
+            {$pfLazy, $fn, $pw}
+        ]
+    ],
+    {"no-materialize", "no-materialize", "no-materialize"},
+    TestID -> "Lazy-arrayobject-box-does-not-materialize"
+]
+
+VerificationTest[
+    Map[Head[ToBoxes[ArrayObject[#], StandardForm]] &, {$pfLazy, $fn, $pw}],
+    ConstantArray[InterpretationBox, 3],
+    TestID -> "Lazy-arrayobject-box-renders"
+]
+
+VerificationTest[
+    Map[
+        With[{obj = ArrayObject[#]},
+            ToBoxes[obj, StandardForm];
+            ArrayLazyQ[obj["Data"]]
+        ] &,
+        {$pfLazy, $fn, $pw}
+    ],
+    {True, True, True},
+    TestID -> "Lazy-arrayobject-box-leaves-container-lazy"
 ]
 
 EndTestSection[]

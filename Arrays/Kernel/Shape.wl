@@ -15,7 +15,7 @@ PackageScope[setDimensions]
 PackageScope[assumptionDimensions]
 
 
-ArrayDimensions::usage = "ArrayDimensions[a] gives the dimensions of an array container of any tier without materializing it, recursing structurally through Inactive[D], Transpose, Plus, Inactive[TensorProduct] and TensorContract forms; non-array input, including ragged lists, quietly gives {}."
+ArrayDimensions::usage = "ArrayDimensions[a] gives the dimensions of an array container of any tier without materializing it, recursing structurally through Inactive[D], Transpose, Plus, Inactive[TensorProduct], TensorContract, ArrayContract, Dot, ArrayDot and ArrayReshape nodes in both their active and their inactive spelling; a node whose operand has no known shape, and non-array input including ragged lists, quietly give {}."
 
 ArrayRank::usage = "ArrayRank[a] gives the number of dimensions of an array container of any tier without materializing it."
 
@@ -80,25 +80,122 @@ ArrayDimensions[a_EventSeries] := Dimensions[a["Values"]]
 
 ArrayDimensions[ds_DataStructure] := If[wrapperExplicitQ[ds], {ds["Length"]}, {}]
 
-ArrayDimensions[(f_InterpolatingFunction)[__]] := Replace[f["OutputDimensions"], Except[_List] :> {}]
+(* Lazy containers answer from their registered shape handler.  Every one of
+   them would otherwise reach the generic TensorDimensions probe above and
+   report the expression tree instead of the array: Dimensions[ifn[t]] is the
+   argument count, Dimensions on an unevaluated Piecewise is its argument count
+   too, and Dimensions[pf] reports internal expression parts.  This clause is
+   the interception point for all of them at once. *)
+ArrayDimensions[a_ ? ArrayLazyQ] := lazyDimensions[a]
 
-ArrayDimensions[Inactive[D][t_, {d_List, n : _Integer ? NonNegative : 1}]] := Join[ArrayDimensions[t], ConstantArray[Length[d], n]]
+
+(* === structural trees ===
+
+   One clause per head of the structuralNodeOperands table in Classification.wl,
+   which is what admits these nodes in the first place; the two tiers answer for
+   the same vocabulary and Tests/Shape.wlt walks the table asserting they agree
+   with Activate on NON-SQUARE operands, where a shape rule that permutes or
+   drops the wrong index still shows.  Every node is matched through
+   IgnoringInactive, so the active and the inactive spelling of an operation
+   report the same shape - the contraction expression of a tensor network
+   carries both.
+
+   An operand shape that comes back {} means the operand has no known shape, and
+   the index arithmetic here (Delete, Drop, Permute, RotateRight) would then
+   either emit a kernel message or hand back an unevaluated non-List expression
+   that an enclosing node propagates - both break the documented "quietly gives
+   {}" contract.  Every such clause therefore goes through shapeFromOperands,
+   which answers {} for an unknown operand and validates the result as a plain
+   integer list.  Inactive[TensorProduct] and Plus are the two exceptions and
+   handle a rank-0 operand themselves: Catenate is the RIGHT answer for a tensor
+   product with a scalar, and the Plus clause drops scalars because Plus threads
+   over them. *)
+
+SetAttributes[shapeFromOperands, HoldRest]
+
+shapeFromOperands[operandShapes_List, dims_] := If[
+    MemberQ[operandShapes, {}],
+    {},
+    Quiet[Check[Replace[dims, Except[{___Integer}] :> {}], {}]]
+]
+
+ArrayDimensions[Inactive[D][t_, {d_List, n : _Integer ? NonNegative : 1}]] := With[{dims = ArrayDimensions[t]},
+    shapeFromOperands[{dims}, Join[dims, ConstantArray[Length[d], n]]]
+]
 
 ArrayDimensions[Inactive[D][t_, __]] := ArrayDimensions[t]
 
-ArrayDimensions[Verbatim[Transpose][t_, perm : _Cycles | _List : {2, 1}]] := Permute[ArrayDimensions[t], perm]
+(* Transpose reads its permutation in three spellings and takes {2, 1} when it
+   is omitted; the shape rule is shared so that the inactive form a lazy
+   contraction emits cannot drift from the active one. *)
 
-ArrayDimensions[Verbatim[Transpose][t_, k_Integer]] := RotateRight[ArrayDimensions[t], k]
+transposeShape[dims_, perm : _Cycles | _List] := shapeFromOperands[{dims}, Permute[dims, perm]]
 
-ArrayDimensions[Verbatim[Transpose][t_, m_Integer <-> n_Integer]] := Permute[ArrayDimensions[t], Cycles[{{m, n}}]]
+transposeShape[dims_, k_Integer] := shapeFromOperands[{dims}, RotateRight[dims, k]]
+
+transposeShape[dims_, m_Integer <-> n_Integer] := shapeFromOperands[{dims}, Permute[dims, Cycles[{{m, n}}]]]
+
+transposeShape[___] := {}
+
+ArrayDimensions[HoldPattern[IgnoringInactive[Transpose[t_]]]] := transposeShape[ArrayDimensions[t], {2, 1}]
+
+ArrayDimensions[HoldPattern[IgnoringInactive[Transpose[t_, perm_]]]] := transposeShape[ArrayDimensions[t], perm]
 
 ArrayDimensions[Inactive[TensorProduct][ts__]] := Catenate[ArrayDimensions /@ {ts}]
 
-ArrayDimensions[Verbatim[Plus][ts___]] := With[{dims = ArrayDimensions /@ {ts}}, {n = Max[Length /@ dims]},
-    TakeWhile[Thread[PadRight[#, n, 1] & /@ dims], Apply[Equal]][[All, 1]]
+(* A rank-0 operand constrains nothing - Plus threads over a scalar - so it is
+   DROPPED rather than padded out to a shape of 1s, which would disagree with
+   every dimension but 1 and cut the common shape to nothing.  Operands that
+   genuinely disagree still give {}: the shape is taken only as far as every
+   remaining operand agrees on it. *)
+ArrayDimensions[Verbatim[Plus][ts___]] := With[{dims = DeleteCases[ArrayDimensions /@ {ts}, {}]},
+    If[ dims === {},
+        {},
+        With[{n = Max[Length /@ dims]},
+            TakeWhile[Thread[PadRight[#, n, 1] & /@ dims], Apply[Equal]][[All, 1]]
+        ]
+    ]
 ]
 
-ArrayDimensions[IgnoringInactive[(ArrayContract | TensorContract)[t_, c : {{___Integer} ...}]]] := Delete[ArrayDimensions[t], List /@ Catenate[c]]
+ArrayDimensions[HoldPattern[IgnoringInactive[(ArrayContract | TensorContract)[t_, c : {{___Integer} ...}]]]] := With[{dims = ArrayDimensions[t]},
+    shapeFromOperands[{dims}, Delete[dims, List /@ Catenate[c]]]
+]
+
+(* The pairwise-contraction lowerings.  Dot contracts the last level of each
+   operand with the first of the next, so the shape of a chain is that rule
+   folded over the operand shapes. *)
+
+dotShape[dims1_, dims2_] := Join[Drop[dims1, -1], Drop[dims2, 1]]
+
+ArrayDimensions[HoldPattern[IgnoringInactive[Dot[ts__]]]] := With[{dims = ArrayDimensions /@ {ts}},
+    shapeFromOperands[dims, Fold[dotShape, dims]]
+]
+
+(* ArrayDot takes either a COUNT of trailing levels of x to contract against the
+   same number of leading levels of y, or an explicit list of index pairs; both
+   spellings occur in a lowered contraction. *)
+
+ArrayDimensions[HoldPattern[IgnoringInactive[ArrayDot[x_, y_, n_Integer]]]] := With[{
+    dims = {ArrayDimensions[x], ArrayDimensions[y]}
+},
+    shapeFromOperands[dims, Join[Drop[First[dims], - n], Drop[Last[dims], n]]]
+]
+
+ArrayDimensions[HoldPattern[IgnoringInactive[ArrayDot[x_, y_, pairs : {{_Integer, _Integer} ...}]]]] := With[{
+    dims = {ArrayDimensions[x], ArrayDimensions[y]}
+},
+    shapeFromOperands[
+        dims,
+        Join[
+            Delete[First[dims], List /@ pairs[[All, 1]]],
+            Delete[Last[dims], List /@ pairs[[All, 2]]]
+        ]
+    ]
+]
+
+(* ArrayReshape states its result shape outright; that the operand is a
+   container is what classification has already settled. *)
+ArrayDimensions[HoldPattern[IgnoringInactive[ArrayReshape[t_, dims : {___Integer}, ___]]]] := dims
 
 
 ArrayRank[t_] := Length[ArrayDimensions[t]]

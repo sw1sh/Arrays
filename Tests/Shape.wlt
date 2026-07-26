@@ -15,6 +15,11 @@ $plain = {{a1, a2}, {a3, a4}}
 $if = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}]
 $lazy = $if[tau]
 
+$pf = ParametricNDSolveValue[{v'[t] == {{0, pa}, {-pa, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}, {pa}]
+$pfLazy = $pf[aa][tt]
+$fn = Function[fnT, {{Cos[fnT], -Sin[fnT]}, {Sin[fnT], Cos[fnT]}}]
+$pw = Piecewise[{{{{1., 2.}, {3., 4.}}, zz < 0}}, {{5., 6.}, {7., 8.}}]
+
 $vec = VectorSymbol["v", 3]
 $mat = MatrixSymbol["M", {2, 3}]
 $arr = ArraySymbol["T", {2, 3, 4}]
@@ -205,6 +210,137 @@ VerificationTest[
     ],
     {True, True},
     TestID -> "Wrapper-EventSeries-numericity-does-not-materialize"
+]
+
+EndTestSection[]
+
+
+BeginTestSection["shape - admitted lazy heads"]
+
+(* Every lazy head must intercept Dimensions, which on an inert form reports the
+   expression TREE.  The container survey is CONTRADICTED for Piecewise: in 15.0
+   Dimensions does NOT thread through the branches of an unevaluated
+   array-valued Piecewise, it reports the argument count, and since the kernel
+   normalizes a one-argument Piecewise to Piecewise[pairs, default] that count is
+   {2} for every Piecewise whatever its branch values are. *)
+VerificationTest[
+    {
+        {Dimensions[$pfLazy], ArrayDimensions[$pfLazy], ArrayRank[$pfLazy]},
+        {Dimensions[$pw], ArrayDimensions[$pw], ArrayRank[$pw]},
+        {Dimensions[Piecewise[{{ConstantArray[1., {2, 3, 4}], zz < 0}}, ConstantArray[0., {2, 3, 4}]]], ArrayDimensions[Piecewise[{{ConstantArray[1., {2, 3, 4}], zz < 0}}, ConstantArray[0., {2, 3, 4}]]]}
+    },
+    {{{1}, {2}, 1}, {{2}, {2, 2}, 2}, {{2}, {2, 3, 4}}},
+    TestID -> "Lazy-shape-intercepts-expression-tree"
+]
+
+VerificationTest[
+    Block[{ArrayMaterialize},
+        ArrayMaterialize[___] := Throw["materialized", "shape-lazy"];
+        Catch[Map[ArrayDimensions, {$pfLazy, $fn, $pw}], "shape-lazy"]
+    ],
+    {{2}, {2, 2}, {2, 2}},
+    TestID -> "Lazy-shape-without-materializing"
+]
+
+(* The ParametricFunction probe solve is cached per object, so the shape is read
+   a second time without entering the solver at all: blocking the probe's own
+   RandomReal draw pins that the cache, not the kernel's parameter cache, is
+   what answers. *)
+VerificationTest[
+    (
+        ArrayDimensions[$pfLazy];
+        Block[{RandomReal},
+            RandomReal[___] := Throw["probed", "shape-pf-cache"];
+            Catch[ArrayDimensions[$pfLazy], "shape-pf-cache"]
+        ]
+    ),
+    {2},
+    TestID -> "Lazy-ParametricFunction-shape-probe-cached"
+]
+
+(* Numericity and zero probes stay on the explicit tier: a lazy container has no
+   readable elements, so all four answer False rather than materializing. *)
+VerificationTest[
+    Map[{ArrayNumericQ[#], ArrayNumberQ[#], ArrayAllZeroQ[#], ZeroArrayQ[#]} &, {$pfLazy, $fn, $pw}],
+    {{False, False, False, False}, {False, False, False, False}, {False, False, False, False}},
+    TestID -> "Lazy-shape-numericity-and-zero-probes"
+]
+
+EndTestSection[]
+
+
+BeginTestSection["shape - structural nodes"]
+
+(* Operands are deliberately NON-SQUARE and pairwise distinct in rank: a shape
+   rule that permutes, drops or joins the wrong index still reports the right
+   answer on square operands, so a square fixture cannot see the drift this
+   section exists to catch. *)
+
+$m23 = ArrayReshape[Range[6], {2, 3}]
+$m34 = ArrayReshape[Range[12], {3, 4}]
+$m43 = ArrayReshape[Range[12], {4, 3}]
+
+(* One node per head of the structuralNodeOperands table in Classification.wl.
+   Both spellings of ArrayDot appear, since a lowered contraction emits the
+   integer form and the index-pair form depending on the method, and Transpose
+   appears inactive, which is the form a lazy contraction wraps its result in. *)
+
+$structuralNodes = {
+    Inactive[TensorProduct][$m23, $m34],
+    Inactive[TensorContract][Inactive[TensorProduct][$m23, $m34], {{2, 3}}],
+    Inactive[ArrayDot][$m23, $m34, {{2, 1}}],
+    Inactive[ArrayDot][$m23, $m34, 1],
+    Inactive[Dot][$m23, $m34],
+    Inactive[Dot][$m23, $m34, $m43],
+    Inactive[ArrayReshape][$m23, {3, 2}],
+    Inactive[Transpose][$m23, {2, 1}],
+    Inactive[Transpose][$m23],
+    Inactive[Transpose][Inactive[ArrayDot][$m23, $m34, {{2, 1}}], {2, 1}]
+}
+
+(* The classification tier and the shape tier answer for the SAME vocabulary:
+   every node admitted as a container reports the shape its Activate has.  A
+   head admitted in Classification.wl with no matching ArrayDimensions clause
+   fails here with {} against the true dimensions. *)
+VerificationTest[
+    Map[
+        {ArrayContainerQ[#], ArrayDimensions[#] === Dimensions[Activate[#]]} &,
+        $structuralNodes
+    ],
+    ConstantArray[{True, True}, Length[$structuralNodes]],
+    TestID -> "shape-structural-node-shapes-agree-with-activate"
+]
+
+(* A shape that came back {} must never leak out of the index arithmetic: the
+   enclosing node has to answer {} quietly rather than emit Delete::partw and
+   hand back an unevaluated Delete expression that fails ListQ. *)
+VerificationTest[
+    With[{unknown = Inactive[TensorContract][Inactive[TensorProduct][unknownA, unknownB], {{1, 2}}]},
+        Map[
+            With[{dims = ArrayDimensions[#]}, {dims, ListQ[dims]}] &,
+            {
+                unknown,
+                Inactive[TensorContract][Inactive[TensorProduct][unknown, $m43], {{2, 3}}],
+                Inactive[ArrayDot][unknown, $m34, {{2, 1}}],
+                Inactive[Transpose][unknown, {2, 1}],
+                Inactive[Dot][unknown, $m34]
+            }
+        ]
+    ],
+    ConstantArray[{{}, True}, 5],
+    TestID -> "shape-structural-unknown-operand-gives-empty-quietly"
+]
+
+(* Plus threads over a scalar, so a rank-0 operand constrains nothing and the
+   container shape survives; operands that genuinely disagree still give {}. *)
+VerificationTest[
+    {
+        ArrayDimensions[MatrixSymbol["A", {2, 3}] + 1],
+        ArrayRank[MatrixSymbol["A", {2, 3}] + 1],
+        ArrayDimensions[MatrixSymbol["A", {2, 3}] + MatrixSymbol["B", {3, 2}]]
+    },
+    {{2, 3}, 2, {}},
+    TestID -> "shape-plus-broadcasts-scalar-operand"
 ]
 
 EndTestSection[]

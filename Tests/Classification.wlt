@@ -16,6 +16,14 @@ $if = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t,
 $lazy = $if[tau]
 $scalarIf = NDSolveValue[{u'[t] == - u[t], u[0] == 1.}, u, {t, 0, 1}]
 
+(* Lazy-tier fixtures for the heads admitted alongside InterpolatingFunction.
+   The parametric one is a real ParametricNDSolveValue, so the probe solve, the
+   parameter cache and the substitution all run against the kernel object. *)
+$pf = ParametricNDSolveValue[{v'[t] == {{0, pa}, {-pa, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}, {pa}]
+$pfLazy = $pf[aa][tt]
+$fn = Function[fnT, {{Cos[fnT], -Sin[fnT]}, {Sin[fnT], Cos[fnT]}}]
+$pw = Piecewise[{{{{1., 2.}, {3., 4.}}, zz < 0}}, {{5., 6.}, {7., 8.}}]
+
 $vec = VectorSymbol["v", 3]
 $mat = MatrixSymbol["M", {2, 3}]
 $arr = ArraySymbol["T", {2, 3, 4}]
@@ -242,6 +250,193 @@ VerificationTest[
     },
     {True, True, False, False},
     TestID -> "Wrapper-ComputeNativeQ-pins"
+]
+
+EndTestSection[]
+
+
+BeginTestSection["classification - admitted lazy heads"]
+
+(* ParametricFunction: only the FULLY APPLIED form pf[params][t] is an array
+   container.  Substituting every parameter of pf[params] gives an
+   InterpolatingFunction - a function, not an array - and the bare object has
+   nothing bound at all, so neither has a materialization to an array.  This is
+   the same line the reference head draws between ifn (declined) and ifn[t]
+   (admitted). *)
+VerificationTest[
+    Through[{ArrayContainerQ, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ}[$pfLazy]],
+    {True, False, True, False},
+    TestID -> "Lazy-ParametricFunction-applied-classification"
+]
+
+VerificationTest[
+    {ArrayContainerQ[$pf], ArrayLazyQ[$pf], ArrayContainerQ[$pf[aa]], ArrayLazyQ[$pf[aa]]},
+    {False, False, False, False},
+    TestID -> "Lazy-ParametricFunction-bare-and-partial-declined"
+]
+
+(* Numeric arguments throughout: pf[1.] solves and pf[1.][0.5] is an explicit
+   vector, so nothing is left lazy.  The trigger is NumericQ, so an exact Pi/6
+   solves too and what stays lazy is the InterpolatingFunction it produced. *)
+VerificationTest[
+    {ArrayLazyQ[$pf[1.][0.5]], ArrayExplicitQ[$pf[1.][0.5]], ArrayLazyQ[$pf[Pi/6][tt]], ArrayDimensions[$pf[Pi/6][tt]]},
+    {False, True, True, {2}},
+    TestID -> "Lazy-ParametricFunction-numeric-arguments-not-lazy"
+]
+
+(* Function is stored UNAPPLIED: applying it evaluates, so there is no inert
+   applied form to recognize. *)
+VerificationTest[
+    Through[{ArrayContainerQ, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ}[$fn]],
+    {True, False, True, False},
+    TestID -> "Lazy-Function-classification"
+]
+
+(* A scalar-valued Function is not an array; a slot form is admitted; a
+   three-argument Function carries attributes a rebuild could not preserve and a
+   SlotSequence body has no fixed arity, so both are declined. *)
+VerificationTest[
+    {
+        ArrayLazyQ[Function[q, q^2]],
+        ArrayLazyQ[Function[{Cos[#], Sin[#]}]],
+        ArrayLazyQ[Function[q, {q, q}, HoldAll]],
+        ArrayLazyQ[Function[{##}]]
+    },
+    {False, True, False, False},
+    TestID -> "Lazy-Function-scope-of-recognition"
+]
+
+(* Three-step shape protocol. The formal-symbol probe leaves an If body as an
+   unevaluated If, whose Dimensions would be the argument count, so ArrayQ
+   guards it and the numeric probe settles the shape instead. *)
+VerificationTest[
+    With[{f = Function[q, If[q > 0, {1., 2.}, {3., 4.}]]},
+        {ArrayQ[f[\[FormalT]]], ArrayLazyQ[f], ArrayDimensions[f]}
+    ],
+    {False, True, {2}},
+    TestID -> "Lazy-Function-numeric-probe-settles-if-body"
+]
+
+(* When both probes fail the value is NOT a container: no shape is guessed.
+   ArrayDeclareShape is the third step, and removing the declaration takes the
+   admission away again. *)
+VerificationTest[
+    With[{f = Function[q, If[q > 2, {1., 2.}, $Failed]]},
+        {
+            ArrayLazyQ[f],
+            ArrayDimensions[f],
+            ArrayDeclareShape[f, {2}],
+            ArrayLazyQ[f],
+            ArrayDimensions[f],
+            ArrayDeclareShape[f],
+            ArrayDeclareShape[f, None],
+            ArrayLazyQ[f]
+        }
+    ],
+    {False, {}, {2}, True, {2}, {2}, None, False},
+    TestID -> "Lazy-Function-declared-shape-protocol"
+]
+
+VerificationTest[
+    Head[ArrayDeclareShape[Function[q, {q, q}], {0}]],
+    ArrayDeclareShape,
+    {ArrayDeclareShape::baddims},
+    TestID -> "Lazy-Function-declared-shape-rejects-bad-dimensions"
+]
+
+VerificationTest[
+    Through[{ArrayContainerQ, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ}[$pw]],
+    {True, False, True, False},
+    TestID -> "Lazy-Piecewise-classification"
+]
+
+(* Piecewise negatives: a scalar-valued Piecewise is not an array; the implicit
+   scalar 0 default is declined, since a substitution falling through every
+   condition would then return a scalar instead of an array; branch values of
+   different shapes are declined; and a Piecewise whose conditions are all
+   decidable has already evaluated to its branch value, so nothing is lazy. *)
+VerificationTest[
+    {
+        ArrayLazyQ[Piecewise[{{1, zz < 0}}, 2]],
+        ArrayLazyQ[Piecewise[{{{1., 2.}, zz < 0}}]],
+        ArrayLazyQ[Piecewise[{{{1., 2.}, zz < 0}}, {3., 4., 5.}]],
+        ArrayLazyQ[Piecewise[{{{{1., 2.}}, 1 < 0}}, {{3., 4.}}]],
+        ArrayExplicitQ[Piecewise[{{{{1., 2.}}, 1 < 0}}, {{3., 4.}}]]
+    },
+    {False, False, False, False, True},
+    TestID -> "Lazy-Piecewise-negative-cases"
+]
+
+(* A SOURCE net - no open input ports - is a lazy container: its shape comes off
+   the output port and its value is one call.  A net with open inputs is a
+   function of those inputs and has no array value, so it is declined, as the
+   partially applied ParametricFunction is. *)
+
+$netSource = NetGraph[{NetArrayLayer["Array" -> {{1., 2., 3.}, {4., 5., 6.}}]}, {1 -> NetPort["Output"]}]
+$netChain = NetChain[{NetArrayLayer["Array" -> {1., 2., 3.}]}]
+$netOpen = NetGraph[{ElementwiseLayer[Tanh]}, {1 -> NetPort["Output"]}, "Input" -> 3]
+
+VerificationTest[
+    {
+        Through[{ArrayContainerQ, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ}[$netSource]],
+        Through[{ArrayContainerQ, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ}[$netChain]],
+        Through[{ArrayContainerQ, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ}[$netOpen]]
+    },
+    {{True, False, True, False}, {True, False, True, False}, {False, False, False, False}},
+    TestID -> "Lazy-NetGraph-classification"
+]
+
+(* Shape is introspected off the output port, on a NON-SQUARE net so that a
+   transposed reading would show, and the net is never RUN to get it: a counting
+   wrapper around the evaluation proves ArrayDimensions and ArrayRank stay on
+   the port metadata while ArrayMaterialize is the one call that evaluates. *)
+VerificationTest[
+    With[{netRuns = Function[expr, Length[Trace[expr, _NetGraph[]]], HoldFirst]},
+        {
+            ArrayDimensions[$netSource],
+            ArrayRank[$netSource],
+            netRuns[ArrayDimensions[$netSource]],
+            netRuns[ArrayRank[$netSource]],
+            netRuns[ArrayContainerQ[$netSource]],
+            netRuns[ArrayMaterialize[$netSource]],
+            ArrayMaterialize[$netSource]
+        }
+    ],
+    {{2, 3}, 2, 0, 0, 0, 1, {{1., 2., 3.}, {4., 5., 6.}}},
+    TestID -> "Lazy-NetGraph-shape-does-not-evaluate-the-net"
+]
+
+(* The structural ops have no lazy-preserving rebuild for a net - a TransposeLayer
+   built from a truncated permutation is the documented trap - so they
+   materialize-then-operate, and the reference is exactly that. *)
+VerificationTest[
+    {
+        ArrayTranspose[$netSource, {2, 1}] === Transpose[ArrayMaterialize[$netSource]],
+        ArrayPart[$netSource, {2}] === Part[ArrayMaterialize[$netSource], 2],
+        ArrayConjugate[$netSource] === Conjugate[ArrayMaterialize[$netSource]],
+        ArrayVector[$netSource] === Flatten[ArrayMaterialize[$netSource]]
+    },
+    {True, True, True, True},
+    TestID -> "Lazy-NetGraph-structural-ops-materialize-then-operate"
+]
+
+(* RECOGNITION MUST NOT RUN USER CODE.  ArrayLazyQ on an unapplied Function
+   evaluates its body, which is documented; asking whether an arbitrary
+   Inactive, Plus or Transpose expression is a container must not trigger that
+   transitively, at any depth of the tree. *)
+VerificationTest[
+    Block[{probeRuns = 0, probe},
+        probe = Function[t, probeRuns++; {{t, 0.}, {0., t}}];
+        {
+            ArrayContainerQ[Inactive[TensorProduct][probe, {{1, 2}, {3, 4}}]],
+            ArrayContainerQ[Inactive[TensorContract][Inactive[TensorProduct][probe, {{1, 2}, {3, 4}}], {{1, 2}}]],
+            probeRuns,
+            ArrayLazyQ[probe],
+            probeRuns > 0
+        }
+    ],
+    {False, False, 0, True, True},
+    TestID -> "classification-structural-tree-does-not-evaluate-a-lazy-leaf"
 ]
 
 EndTestSection[]

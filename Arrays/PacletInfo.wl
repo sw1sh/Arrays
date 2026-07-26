@@ -26,6 +26,7 @@ PacletObject[
           "Wolfram`Arrays`ArrayConjugate",
           "Wolfram`Arrays`ArrayContainerQ",
           "Wolfram`Arrays`ArrayContract",
+          "Wolfram`Arrays`ArrayDeclareShape",
           "Wolfram`Arrays`ArrayDimensions",
           "Wolfram`Arrays`ArrayExplicitLength",
           "Wolfram`Arrays`ArrayExplicitPositions",

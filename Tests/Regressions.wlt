@@ -16,6 +16,19 @@ $lazyM = $ifM[tau]
 
 $mat = MatrixSymbol["M", {2, 3}]
 
+(* Lazy Function fixtures.  Every one of them has its own parameter and its own
+   free symbols, because the shape probe memo and the declaration table are
+   keyed on the whole Function. *)
+
+$fn2 = Function[{fnX, fnY}, {{fnX, fnY}, {fnY, fnX}}]
+$fnM = Function[fnT4, {{Cos[fnT4], -Sin[fnT4]}, {2 Sin[fnT4], Cos[fnT4]}}]
+$fnIf = Function[fnT2, If[fnT2 > 2, {1., 2.}]]
+$fnTable = Function[fnT3, Table[1., {fnT3}]]
+$fnConst = Function[fnT5, ConstantArray[fnT5, $fnN]]
+$fnSide = Function[fnT6, ($fnHits++; {Sin[fnT6], Cos[fnT6]})]
+
+$pwM = Piecewise[{{{{1., 2.}, {3., 4.}}, zzM < 0}}, {{5., 6.}, {7., 8.}}]
+
 
 BeginTestSection["regressions"]
 
@@ -191,6 +204,152 @@ VerificationTest[
     ],
     {NumericArray, {1., 2., 0., 0.}},
     TestID -> "regression-pad-numericarray"
+]
+
+(* A rule keyed on SOME parameters of a multi-parameter Function curries: the
+   binding used to be stripped out as bound and then dropped by the free-rules
+   branch, so the container came back unchanged with no message. *)
+VerificationTest[
+    With[{curried = ArrayReplaceAll[$fn2, fnX -> 1.]},
+        {ArrayLazyQ[curried], ArrayDimensions[curried], ArrayReplaceAll[curried, fnY -> 2.]}
+    ],
+    {True, {2, 2}, {{1., 2.}, {2., 1.}}},
+    TestID -> "regression-lazy-function-partial-binding-curries"
+]
+
+(* A Dispatch table and an Association are rule specifications too: unrecognized,
+   they counted as zero bound parameters and the ReplaceAll branch rewrote the
+   parameter specification itself. *)
+VerificationTest[
+    {
+        ArrayReplaceAll[$fn2, Dispatch[{fnX -> 1., fnY -> 2.}]],
+        ArrayReplaceAll[$fn2, <|fnX -> 1., fnY -> 2.|>],
+        ArrayReplaceAll[$fn2, Dispatch[{fnX -> 1.}]]
+    },
+    {{{1., 2.}, {2., 1.}}, {{1., 2.}, {2., 1.}}, Function[{fnY}, {{1., fnY}, {fnY, 1.}}]},
+    TestID -> "regression-lazy-function-dispatch-and-association-rules"
+]
+
+(* A declared shape is the one case where the body is NOT an explicit array, so
+   materialization may not map over it: it used to hand back an If of Functions
+   that is not an array at all and leaked the private rewrap symbol. *)
+VerificationTest[
+    {
+        ArrayLazyQ[$fnIf],
+        ArrayDeclareShape[$fnIf, {2}],
+        ArrayLazyQ[$fnIf],
+        ArrayDimensions[$fnIf],
+        ArrayQ[ArrayMaterialize[$fnIf]],
+        ArrayReplaceAll[ArrayMaterialize[$fnIf], fnT2 -> 3],
+        ArrayReplaceAll[ArrayPart[$fnIf, {1}], fnT2 -> 3],
+        ArrayReplaceAll[$fnIf, fnT2 -> 3]
+    },
+    {False, {2}, True, {2}, True, {1., 2.}, 1., {1., 2.}},
+    TestID -> "regression-lazy-function-declared-shape-materializes-array"
+]
+
+(* A probe value of {} is an ArrayQ whose shape is {0}: it used to be admitted
+   as a rank-1 container of length zero that no declaration could correct. *)
+VerificationTest[
+    {
+        ArrayLazyQ[$fnTable],
+        ArrayDimensions[$fnTable],
+        ArrayDeclareShape[$fnTable, {3}],
+        ArrayDimensions[$fnTable],
+        ArrayReplaceAll[$fnTable, fnT3 -> 3]
+    },
+    {False, {}, {3}, {3}, {1., 1., 1.}},
+    TestID -> "regression-lazy-function-empty-probe-not-a-container"
+]
+
+(* The per-scalar expansion of a Function container is an array of unapplied
+   scalar Functions, and a single element taken out of it is one: substituting
+   either used to rewrite the parameter specification (Function::flpar). *)
+VerificationTest[
+    {
+        ArrayReplaceAll[ArrayMaterialize[$fnM], fnT4 -> 0.37] === $fnM[0.37],
+        ArrayReplaceAll[ArrayPart[$fnM, {1, 2}], fnT4 -> 0.37] === -Sin[0.37],
+        ArrayReplaceAll[{ArrayPart[$fnM, {1, 1}], 2 ArrayPart[$fnM, {2, 1}]}, fnT4 -> 0.37] === {Cos[0.37], 4. Sin[0.37]}
+    },
+    {True, True, True},
+    TestID -> "regression-lazy-function-scalar-elements-substitute"
+]
+
+(* A probed shape is a guess and it is memoized: a declaration overrides it, and
+   removing the declaration re-probes instead of restoring the stale value. *)
+VerificationTest[
+    Block[{before, stale, declared, reprobed},
+        $fnN = 2;
+        before = ArrayDimensions[$fnConst];
+        $fnN = 5;
+        stale = ArrayDimensions[$fnConst];
+        ArrayDeclareShape[$fnConst, {5}];
+        declared = ArrayDimensions[$fnConst];
+        ArrayDeclareShape[$fnConst, None];
+        reprobed = ArrayDimensions[$fnConst];
+        {before, stale, declared, reprobed}
+    ],
+    {{2}, {2}, {5}, {5}},
+    TestID -> "regression-lazy-function-declared-shape-overrides-probe"
+]
+
+(* Recognizing an undeclared Function EVALUATES its body once - the documented
+   contract - and a declared shape is the way to keep it from happening. *)
+VerificationTest[
+    Block[{declared, undeclared},
+        $fnHits = 0;
+        ArrayDeclareShape[$fnSide, {2}];
+        declared = {ArrayLazyQ[$fnSide], ArrayDimensions[$fnSide], $fnHits};
+        ArrayDeclareShape[$fnSide, None];
+        ArrayLazyQ[$fnSide];
+        ArrayLazyQ[$fnSide];
+        undeclared = $fnHits;
+        {declared, undeclared}
+    ],
+    {{True, {2}, 0}, 1},
+    TestID -> "regression-lazy-function-declared-shape-skips-probe"
+]
+
+(* Off element level every lazy container materializes, whether or not its head
+   has a rebuild: it used to depend on the presence of a Rebuild key, so the same
+   call was answered for a ParametricFunction and left unevaluated for the rest. *)
+VerificationTest[
+    {
+        Head /@ {ArrayMap[Total, $lazyM, {1}], ArrayMap[Total, $pwM, {1}], ArrayMap[Total, $fnM, {1}]},
+        TrueQ[Max[Abs[(ArrayMap[Total, $lazyM, {1}] /. tau -> 0.5) - Map[Total, $ifM[0.5], {1}]]] < 1*^-4],
+        ArrayReplaceAll[ArrayMap[Total, $fnM, {1}], fnT4 -> 0.37] === Map[Total, $fnM[0.37], {1}]
+    },
+    {{List, List, List}, True, True},
+    TestID -> "regression-lazy-map-off-element-level-materializes"
+]
+
+(* A declaration on an expression whose head never reads one used to be recorded
+   and returned as a success while changing nothing. *)
+VerificationTest[
+    {Head[ArrayDeclareShape[{1, 2, 3}, {7}]], ArrayDeclareShape[{1, 2, 3}], ArrayDimensions[{1, 2, 3}]},
+    {ArrayDeclareShape, Missing["NotDeclared"], {3}},
+    {ArrayDeclareShape::undeclarable},
+    TestID -> "regression-declare-shape-refuses-undeclarable"
+]
+
+VerificationTest[
+    {Head[ArrayDeclareShape[$fnM, {2, 2, 2, 2}]], Head[ArrayDeclareShape[$fnM, "two"]]},
+    {List, ArrayDeclareShape},
+    {ArrayDeclareShape::baddims},
+    TestID -> "regression-declare-shape-validates-dims"
+]
+
+(* The reset entry point clears both tables, so a session that probed or declared
+   a shape wrongly is recoverable.  It runs last: it wipes every declaration
+   this section made. *)
+VerificationTest[
+    (
+        ArrayDeclareShape[$fnIf, {2}];
+        ArrayDeclareShape[All, None];
+        {ArrayDeclareShape[$fnIf], ArrayLazyQ[$fnIf], ArrayDeclareShape[$fnM], ArrayLazyQ[$fnM]}
+    ),
+    {Missing["NotDeclared"], False, Missing["NotDeclared"], True},
+    TestID -> "regression-declare-shape-reset-clears-all"
 ]
 
 (* No exported name may shadow a System` symbol.  The list of names is DERIVED

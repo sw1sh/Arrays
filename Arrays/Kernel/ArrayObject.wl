@@ -38,10 +38,13 @@ ArrayObject::propx = "ArrayObject property lookup called with `1` arguments; 1 p
    unsupported input stays unevaluated instead of yielding a half-formed object.
 
    The cost of this design is that ArrayContainerQ runs on every evaluation of
-   the object rather than once at construction; every tier predicate is
-   shape-only and never materializes, so this is bounded by ArrayQ on a plain
-   nested List - O(n) in the element count, and paid again on every property
-   read and every render.  Validating once and storing a normalized form would
+   the object rather than once at construction; every tier predicate answers
+   from shape alone and never materializes, so this is bounded by ArrayQ on a
+   plain nested List - O(n) in the element count, and paid again on every
+   property read and every render.  The one head whose SHAPE is not free is an
+   unapplied Function: it has no shape property, so recognizing one evaluates
+   its body at a probe point unless ArrayDeclareShape has already given the
+   shape (see Lazy.wl).  Validating once and storing a normalized form would
    trade that for a worse failure: admission can LAPSE (an assumption-registered
    symbol whose $Assumptions entry is removed stops being a container), and a
    handle validated once would go on reporting a shape it no longer has.  Every

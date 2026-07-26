@@ -45,8 +45,15 @@ subdir = <|
     "Symbol" -> {"Documentation", "English", "ReferencePages", "Symbols"},
     "Guide" -> {"Documentation", "English", "Guides"},
     "TechNote" -> {"Documentation", "English", "Tutorials"},
-    "Overview" -> {"Documentation", "English", "Tutorials"}
+    "Overview" -> {"Documentation", "English", "Tutorials"},
+    (* the paclet-repository submission notebook is not a documentation page:
+       it goes to the repository root, outside the paclet layout *)
+    "Paclet" -> {}
 |>
+
+(* the Paclet template's notebook is rooted at the repository, every doc page at
+   the paclet directory *)
+outRoot[tmpl_String] := If[tmpl === "Paclet", repoDir, pacletDir]
 
 frontmatterTemplate[srcFile_String] := Block[{m},
     m = StringCases[Import[srcFile, "Text"],
@@ -78,7 +85,7 @@ buildDoc[srcFile_String] := Block[{tmpl, dir, out},
         Print["  (skip ", FileNameTake[srcFile], ": template ", tmpl, " is not a doc page)"];
         Return[]
     ];
-    dir = FileNameJoin[Prepend[subdir[tmpl], pacletDir]];
+    dir = FileNameJoin[Prepend[subdir[tmpl], outRoot[tmpl]]];
     Quiet @ CreateDirectory[dir, CreateIntermediateDirectories -> True];
     out = FileNameJoin[{dir, FileBaseName[srcFile] <> ".nb"}];
     mtn[srcFile, out];

@@ -13,7 +13,7 @@ ArrayExplicitPositions::usage = "ArrayExplicitPositions[a] gives the positions o
 
 ArrayExplicitLength::usage = "ArrayExplicitLength[a] gives the number of explicitly stored values of a SparseArray, or of nonzero values of any other explicit array container via an on-demand SparseArray wrap; lazy and symbolic containers give Missing[\"NotExplicit\"]."
 
-ArrayMaterialize::usage = "ArrayMaterialize[a] gives an explicit array of scalar expressions for any array container: Normal for explicit containers, with wrapper-specific routes: QuantityMagnitude for a QuantityArray, per-column Normal for a named Tabular, Normal of the \"Values\" column for an EventSeries, and an immediate packed snapshot of the elements for a DataStructure store, whose handles otherwise alias each other; lazy containers expand per scalar, and symbolic containers give the input itself."
+ArrayMaterialize::usage = "ArrayMaterialize[a] gives an explicit array of scalar expressions for any array container: Normal for explicit containers, with wrapper-specific routes: QuantityMagnitude for a QuantityArray, per-column Normal for a named Tabular, Normal of the \"Values\" column for an EventSeries, and an immediate packed snapshot of the elements for a DataStructure store, whose handles otherwise alias each other; a lazy container expands per scalar where its head has a per-scalar form (reinterpolation for an InterpolatingFunction, per-position branch threading for a Piecewise, an array of scalar Functions for a Function) and through Indexed where it has none, as for a ParametricFunction; a deferred structural tree, whose leaves are all explicit, is activated; the leafless symbolic containers give the input itself."
 
 ArrayPack::usage = "ArrayPack[a] gives a best-effort packed array conversion of an explicit array container, trying the plain, Real and Complex forms of Developer`ToPackedArray in turn; the coercing forms are accepted only when every value survives at machine precision, and any input that cannot be packed faithfully, including lazy and symbolic containers, is returned unchanged."
 
@@ -60,16 +60,6 @@ ArrayExplicitLength[a_ ? ArrayLazyQ] := Missing["NotExplicit"]
 ArrayExplicitLength[a_ ? ArraySymbolicQ] := Missing["NotExplicit"]
 
 
-(* Per-scalar expansion of a single-parameter array-valued InterpolatingFunction
-   application, ported from the QuantumFramework ExpandInterpolatingFunction. *)
-
-expandInterpolatingFunction[f_InterpolatingFunction, parameter_] := Map[
-    Interpolation[Thread[{f["Grid"], #}], InterpolationOrder -> f["InterpolationOrder"]][parameter] &,
-    Transpose[f["ValuesOnGrid"], InversePermutation[Cycles[{Range[Length[f["OutputDimensions"]] + 1]}]]],
-    {-2}
-]
-
-
 (* Wrapper materialization routes.  TabularColumn, Dataset and ByteArray ride
    the generic Normal clause below; the heads here need dedicated paths. *)
 
@@ -102,7 +92,22 @@ ArrayMaterialize[ds_DataStructure ? wrapperExplicitQ] := Developer`ToPackedArray
 
 ArrayMaterialize[a_ ? ArrayExplicitQ] := Normal[a]
 
-ArrayMaterialize[expr : (f_InterpolatingFunction)[parameter_]] := expandInterpolatingFunction[f, parameter] /; ArrayLazyQ[expr]
+(* A lazy container expands through its registered materialization handler: a
+   per-scalar form where the head has one (reinterpolation for an
+   InterpolatingFunction, threading through the branches of a Piecewise, an
+   array of scalar Functions for a Function), and an Indexed expansion where it
+   does not. *)
+ArrayMaterialize[a_ ? ArrayLazyQ] := lazyMaterialize[a]
+
+(* A deferred tree is a structural tree whose leaves are all explicit, so its
+   shape and its values are both fully determined and its materialization is one
+   Activate.  Returning the tree unchanged would make ArrayMaterialize the only
+   tier that hands back something ArrayExplicitQ rejects, and would leave every
+   materialize-then-operate fallback - ArrayNumericQ, ArrayAllZeroQ, the wrapper
+   clauses of Vector.wl and Structural.wl - with nothing to fall back to.  The
+   leafless symbolic containers keep the identity behaviour below: they have no
+   values to compute. *)
+ArrayMaterialize[a_ ? deferredTreeQ] := Activate[a]
 
 ArrayMaterialize[a_ ? ArraySymbolicQ] := a
 

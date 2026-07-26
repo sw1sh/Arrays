@@ -1,9 +1,10 @@
-Package["WolframInstitute`ArrayUtilities`"]
+Package["Wolfram`Arrays`"]
 
 PackageExport[ArrayContainerQ]
 PackageExport[ArrayExplicitQ]
 PackageExport[ArrayLazyQ]
 PackageExport[ArraySymbolicQ]
+PackageExport[ArrayComputeNativeQ]
 
 PackageExport[ArrayDimensions]
 PackageExport[ArrayRank]
@@ -39,11 +40,13 @@ PackageScope[setDimensions]
 
 ArrayContainerQ::usage = "ArrayContainerQ[a] gives True if a is a supported array container of any tier: explicit, lazy parametric, or symbolic."
 
-ArrayExplicitQ::usage = "ArrayExplicitQ[a] gives True if a is an explicit array container: SparseArray, packed or plain List array, NumericArray, or a structured array such as SymmetrizedArray."
+ArrayExplicitQ::usage = "ArrayExplicitQ[a] gives True if a is an explicit array container: SparseArray, packed or plain List array, NumericArray, a structured array such as SymmetrizedArray, or a shape-introspectable wrapper container: QuantityArray, TabularColumn, Tabular, Dataset, ByteArray, EventSeries, or a DataStructure array store (\"DynamicArray\" or \"FixedArray\")."
 
 ArrayLazyQ::usage = "ArrayLazyQ[a] gives True if a is a lazy parametric array container: an array-valued expression f[args] with at least one non-numeric argument, such as an array-valued InterpolatingFunction applied to a symbolic parameter."
 
 ArraySymbolicQ::usage = "ArraySymbolicQ[a] gives True if a is a symbolic array container: VectorSymbol, MatrixSymbol, ArraySymbol, an atomic symbol registered in $Assumptions as an element of Vectors, Matrices or Arrays, or a structural inactive tree of such containers."
+
+ArrayComputeNativeQ::usage = "ArrayComputeNativeQ[a] gives True if an explicit array container computes natively without materializing: SparseArray, packed or plain List arrays, QuantityArray and TabularColumn; storage-only containers (NumericArray, structured arrays such as SymmetrizedArray, Tabular, Dataset, ByteArray, EventSeries, DataStructure stores) give False, as do lazy and symbolic containers."
 
 ArrayDimensions::usage = "ArrayDimensions[a] gives the dimensions of an array container of any tier without materializing it, recursing structurally through Inactive[D], Transpose, Plus, Inactive[TensorProduct] and TensorContract forms; non-array input, including ragged lists, quietly gives {}."
 
@@ -61,7 +64,7 @@ ArrayExplicitPositions::usage = "ArrayExplicitPositions[a] gives the positions o
 
 ArrayExplicitLength::usage = "ArrayExplicitLength[a] gives the number of explicitly stored values of a SparseArray, or of nonzero values of any other explicit array container via an on-demand SparseArray wrap; lazy and symbolic containers give Missing[\"NotExplicit\"]."
 
-ArrayMaterialize::usage = "ArrayMaterialize[a] gives an explicit array of scalar expressions for any array container: Normal for explicit containers, per-scalar expansion of an array-valued InterpolatingFunction application for lazy containers, and the input itself for symbolic containers."
+ArrayMaterialize::usage = "ArrayMaterialize[a] gives an explicit array of scalar expressions for any array container: Normal for explicit containers, with wrapper-specific routes: QuantityMagnitude for a QuantityArray, per-column Normal for a named Tabular, Normal of the \"Values\" column for an EventSeries, and an immediate packed snapshot of the elements for a DataStructure store, whose handles otherwise alias each other; lazy containers expand per scalar, and symbolic containers give the input itself."
 
 ArrayPack::usage = "ArrayPack[a] gives a best-effort packed array conversion of an explicit array container, trying the plain, Real and Complex forms of Developer`ToPackedArray in turn; the coercing forms are accepted only when every value survives at machine precision, and any input that cannot be packed faithfully, including lazy and symbolic containers, is returned unchanged."
 
@@ -77,7 +80,7 @@ ArrayName::usage = "ArrayName[a] gives the name of a symbolic array container: t
 
 ArrayMap::usage = "ArrayMap[f, a] maps f over the deepest elements of an explicit array container, preserving SparseArray structure and repacking packed arrays where the result packs without coercion.\nArrayMap[f, a, level] maps at the given level, densifying a SparseArray when level is not its element level {-1} or {rank}. At element level a lazy container remaps its value grid and stays lazy when f keeps the values numeric, and a symbolic container applies f to the whole container; otherwise ArrayMap is left unevaluated."
 
-ArrayReplaceAll::usage = "ArrayReplaceAll[a, rules] applies rules to an array container: for a lazy container the whole expression is substituted at once, so substituting all parameters evaluates the array-valued function a single time; for a SparseArray the rules map over the explicit values; any other container uses ReplaceAll."
+ArrayReplaceAll::usage = "ArrayReplaceAll[a, rules] applies rules to an array container: for a lazy container the whole expression is substituted at once, so substituting all parameters evaluates the array-valued function a single time; for a SparseArray the rules map over the explicit values; a structured atom such as SymmetrizedArray or a wrapper container materializes first, since ReplaceAll does not penetrate such atoms; any other container uses ReplaceAll."
 
 ArrayConjugate::usage = "ArrayConjugate[a] conjugates an array container, preserving SparseArray, packed and NumericArray containers, materializing lazy containers, and keeping symbolic containers in unevaluated form."
 
@@ -94,13 +97,68 @@ PadArray::usage = "PadArray[a, spec] pads an explicit array container with zeros
 
 (* Explicit tier: SparseArray, packed and plain List arrays, and structured
    arrays (SymmetrizedArray etc.) all satisfy ArrayQ without materializing;
-   NumericArray does not satisfy ArrayQ and gets its own clause. *)
+   NumericArray does not satisfy ArrayQ and gets its own clause.
+
+   Wrapper containers are admitted under the shape-based criterion: the shape
+   is introspectable without materializing AND a materialization path exists.
+   Compute-nativeness is a per-head capability flag (ArrayComputeNativeQ),
+   not an admission gate.  Note that ArrayQ is False for Tabular, Dataset,
+   ByteArray, EventSeries and DataStructure, so they need head-based clauses.
+
+   Association stays rejected: Dimensions and Normal report the entry
+   multiset (the entry count and a list of rules), not the represented
+   vector, so it has neither a faithful shape nor a faithful materialization;
+   convert explicitly, e.g. SparseArray with caller-supplied dimensions. *)
+
+wrapperExplicitQ[_QuantityArray | _TabularColumn | _Dataset | _EventSeries] := True
+
+wrapperExplicitQ[a_Tabular] := TabularQ[a]
+
+wrapperExplicitQ[a_ByteArray] := ByteArrayQ[a]
+
+(* DataStructure array stores are rank-1 only; recognition is by store type.
+   The handles have reference semantics (copies alias the same store), so
+   every ingest path snapshots immediately: see ArrayMaterialize. *)
+wrapperExplicitQ[ds_DataStructure] := DataStructureQ[ds] && MatchQ[ds, DataStructure["DynamicArray" | "FixedArray", ___]]
+
+wrapperExplicitQ[___] := False
+
+
+(* Wrappers without native structural support: every admitted wrapper except
+   QuantityArray, whose Transpose, Conjugate, Flatten and ArrayReshape all
+   preserve the wrapper natively. *)
+
+opaqueWrapperQ[_QuantityArray] := False
+
+opaqueWrapperQ[a_] := wrapperExplicitQ[a]
+
 
 ArrayExplicitQ[_NumericArray] := True
+
+ArrayExplicitQ[a : _QuantityArray | _TabularColumn | _Tabular | _Dataset | _ByteArray | _EventSeries | _DataStructure] := wrapperExplicitQ[a]
 
 ArrayExplicitQ[a_] := ArrayQ[a]
 
 ArrayExplicitQ[___] := False
+
+
+(* Compute-native capability flag: True only for heads verified to run
+   elementwise arithmetic and Dot natively without materializing.
+   Storage-only containers (NumericArray, structured-array atoms, Tabular,
+   Dataset, ByteArray, EventSeries, DataStructure stores) give False even
+   though they are explicit-tier containers.  EventSeries does thread
+   elementwise scalar arithmetic natively (ev + 1 stays an EventSeries), but
+   it has no native Dot, so it stays False here. *)
+
+ArrayComputeNativeQ[_SparseArray] := True
+
+ArrayComputeNativeQ[a_List] := ArrayQ[a]
+
+ArrayComputeNativeQ[_QuantityArray] := True
+
+ArrayComputeNativeQ[_TabularColumn] := True
+
+ArrayComputeNativeQ[___] := False
 
 
 (* Lazy tier: an array-valued expression f[args] with at least one non-numeric argument.
@@ -171,6 +229,25 @@ ArrayDimensions[t_] := Quiet[Check[Replace[TensorDimensions[t], Except[_List] :>
 (* TensorDimensions does not handle NumericArray *)
 ArrayDimensions[a_NumericArray] := Dimensions[a]
 
+(* Wrapper containers introspect their shape without materializing. *)
+
+ArrayDimensions[a_QuantityArray] := Dimensions[a]
+
+ArrayDimensions[a_TabularColumn] := Dimensions[a]
+
+ArrayDimensions[a_Tabular] := If[TabularQ[a], Dimensions[a], {}]
+
+ArrayDimensions[a_Dataset] := Dimensions[a]
+
+ArrayDimensions[a_ByteArray] := If[ByteArrayQ[a], Dimensions[a], {}]
+
+(* Dimensions on the "Values" TabularColumn view covers scalar, vector and
+   higher-rank valued series uniformly; {PathLength, ValueDimensions} would
+   misreport a scalar-valued series as {n, 1}. *)
+ArrayDimensions[a_EventSeries] := Dimensions[a["Values"]]
+
+ArrayDimensions[ds_DataStructure] := If[wrapperExplicitQ[ds], {ds["Length"]}, {}]
+
 ArrayDimensions[(f_InterpolatingFunction)[__]] := Replace[f["OutputDimensions"], Except[_List] :> {}]
 
 ArrayDimensions[Inactive[D][t_, {d_List, n : _Integer ? NonNegative : 1}]] := Join[ArrayDimensions[t], ConstantArray[Length[d], n]]
@@ -203,11 +280,59 @@ ZeroArrayQ[___] := False
 squareMatrixQ[t_] := MatchQ[ArrayDimensions[t], {n_, n_} | {_, 0}]
 
 
+(* Column element types are strings such as "Real64", "Integer64",
+   "UnsignedInteger8" or "ComplexReal64"; anything else ("String", ...) is
+   non-numeric.  Missing entries disqualify a column under the all-elements
+   semantics of ArrayNumericQ and ArrayNumberQ. *)
+
+numericColumnTypeQ[type_] := StringQ[type] && StringMatchQ[type, ("Integer" | "UnsignedInteger" | "Real" | "ComplexReal") ~~ DigitCharacter ..]
+
+inexactColumnTypeQ[type_] := StringQ[type] && StringMatchQ[type, ("Real" | "ComplexReal") ~~ DigitCharacter ..]
+
+(* Dataset numericity reads off the stored type signature: nested
+   TypeSystem`Vector wrappers over numeric TypeSystem`Atom leaves, giving
+   shape and numericity in one call without traversing the data. *)
+
+numericDatasetTypeQ[TypeSystem`Vector[t_, _]] := numericDatasetTypeQ[t]
+
+numericDatasetTypeQ[TypeSystem`Atom[Real | Integer | Rational | Complex]] := True
+
+numericDatasetTypeQ[___] := False
+
+inexactDatasetTypeQ[TypeSystem`Vector[t_, _]] := inexactDatasetTypeQ[t]
+
+inexactDatasetTypeQ[TypeSystem`Atom[Real | Complex]] := True
+
+inexactDatasetTypeQ[___] := False
+
+
 ArrayNumericQ[a_SparseArray] := VectorQ[a["ExplicitValues"], NumericQ]
 
 ArrayNumericQ[_NumericArray] := True
 
 ArrayNumericQ[a_List] := Developer`PackedArrayQ[a] || ArrayQ[a, _, NumericQ]
+
+(* QuantityArray magnitudes are numeric by construction: numeric-with-units. *)
+ArrayNumericQ[_QuantityArray] := True
+
+ArrayNumericQ[a_TabularColumn] := numericColumnTypeQ[a["ElementType"]] && a["MissingCount"] == 0
+
+(* TabularStructure is itself a Tabular of per-column metadata: its
+   "ColumnType" and "MissingCount" columns decide numericity without
+   materializing the data. *)
+ArrayNumericQ[a_Tabular] := TabularQ[a] && With[{struct = TabularStructure[a]},
+    AllTrue[Normal[struct[[All, "ColumnType"]]], numericColumnTypeQ] &&
+        Total[Normal[struct[[All, "MissingCount"]]]] == 0
+]
+
+ArrayNumericQ[a_Dataset] := numericDatasetTypeQ[Dataset`GetType[a]]
+
+ArrayNumericQ[a_ByteArray] := ByteArrayQ[a]
+
+ArrayNumericQ[a_EventSeries] := ArrayQ[ArrayMaterialize[a], _, NumericQ]
+
+(* DataStructure stores are untyped, so the elements are inspected. *)
+ArrayNumericQ[ds_DataStructure] := wrapperExplicitQ[ds] && VectorQ[ds["Elements"], NumericQ]
 
 ArrayNumericQ[a_ ? ArrayExplicitQ] := ArrayQ[a, _, NumericQ]
 
@@ -224,6 +349,26 @@ ArrayNumberQ[a_NumericArray] := StringStartsQ[NumericArrayType[a], "Real" | "Com
 
 ArrayNumberQ[a_List] := Developer`PackedArrayQ[a, Real] || Developer`PackedArrayQ[a, Complex] || ArrayQ[a, _, InexactNumberQ]
 
+(* QuantityArray inexactness is judged on the magnitudes, so integer-magnitude
+   arrays stay on the exact path like any other integer container. *)
+ArrayNumberQ[a_QuantityArray] := ArrayNumberQ[QuantityMagnitude[a]]
+
+ArrayNumberQ[a_TabularColumn] := inexactColumnTypeQ[a["ElementType"]] && a["MissingCount"] == 0
+
+ArrayNumberQ[a_Tabular] := TabularQ[a] && With[{struct = TabularStructure[a]},
+    AllTrue[Normal[struct[[All, "ColumnType"]]], inexactColumnTypeQ] &&
+        Total[Normal[struct[[All, "MissingCount"]]]] == 0
+]
+
+ArrayNumberQ[a_Dataset] := inexactDatasetTypeQ[Dataset`GetType[a]]
+
+(* ByteArray is integer-typed (unsigned 8-bit), hence never inexact. *)
+ArrayNumberQ[_ByteArray] := False
+
+ArrayNumberQ[a_EventSeries] := ArrayQ[ArrayMaterialize[a], _, InexactNumberQ]
+
+ArrayNumberQ[ds_DataStructure] := wrapperExplicitQ[ds] && VectorQ[ds["Elements"], InexactNumberQ]
+
 ArrayNumberQ[a_ ? ArrayExplicitQ] := ArrayQ[a, _, InexactNumberQ]
 
 ArrayNumberQ[___] := False
@@ -237,6 +382,11 @@ ArrayNumberQ[___] := False
 toSparseArray[a_SparseArray] := a
 
 toSparseArray[a_NumericArray] := SparseArray[Normal[a]]
+
+(* Wrapper containers wrap their materialized data: SparseArray cannot ingest
+   the wrapper heads directly, and for QuantityArray a direct SparseArray
+   would take the slow Normal route through Quantity elements. *)
+toSparseArray[a_ ? wrapperExplicitQ] := SparseArray[ArrayMaterialize[a]]
 
 toSparseArray[a_] := SparseArray[a]
 
@@ -288,6 +438,36 @@ reinterpolate[g_, f_InterpolatingFunction] := Interpolation[
 ]
 
 
+(* Wrapper materialization routes.  TabularColumn, Dataset and ByteArray ride
+   the generic Normal clause below; the heads here need dedicated paths. *)
+
+(* QuantityMagnitude hands back the internal packed magnitudes essentially for
+   free; Normal would instead build an unpacked array of Quantity expressions,
+   orders of magnitude slower.  Units are container metadata, recoverable for
+   a rebuild from a["UnitBlock"]. *)
+ArrayMaterialize[a_QuantityArray] := QuantityMagnitude[a]
+
+(* Normal on a named Tabular yields a list of row Associations; the cheap
+   route is per-column Normal (packed vectors) recombined by Transpose.  An
+   anonymous all-numeric Tabular already Normals to a packed matrix. *)
+ArrayMaterialize[a_Tabular ? TabularQ] := With[{keys = ColumnKeys[a]},
+    If[ keys === None,
+        Normal[a],
+        Transpose[Map[Normal[a[[All, #]]] &, keys]]
+    ]
+]
+
+(* The raw "Values" property returns a TabularColumn-backed view, not a plain
+   list; Normal converts it to a packed array.  The time index is separate
+   metadata, recoverable for a rebuild from a["Times"]. *)
+ArrayMaterialize[a_EventSeries] := Normal[a["Values"]]
+
+(* DataStructure handles have reference semantics (copies alias the same
+   store), so materialization snapshots the elements immediately at the
+   module boundary: the packed copy is immune to later mutation of the
+   source handle. *)
+ArrayMaterialize[ds_DataStructure ? wrapperExplicitQ] := Developer`ToPackedArray[ds["Elements"]]
+
 ArrayMaterialize[a_ ? ArrayExplicitQ] := Normal[a]
 
 ArrayMaterialize[expr : (f_InterpolatingFunction)[parameter_]] := expandInterpolatingFunction[f, parameter] /; ArrayLazyQ[expr]
@@ -319,8 +499,11 @@ packList[a_List] := With[{packed = Developer`ToPackedArray[a]},
 
 ArrayPack[a_List] := packList[a]
 
+(* Non-List explicit containers pack their materialized data, which routes
+   wrapper heads through their dedicated ArrayMaterialize paths (magnitudes
+   for QuantityArray, per-column Normal for named Tabular, ...). *)
 ArrayPack[a_] := If[ ArrayExplicitQ[a],
-    With[{packed = packList[Normal[a]]},
+    With[{packed = packList[ArrayMaterialize[a]]},
         If[Developer`PackedArrayQ[packed], packed, a]
     ],
 
@@ -425,6 +608,10 @@ ArrayPart[t_, {i_, is___}, k_ : 0] := With[{nest = Nest[#[] &, #, k] &},
 ArrayPart[t_, {}, ___] := t
 
 
+(* QuantityArray transposes natively and keeps its wrapper on the generic
+   clause; the remaining wrappers have no native Transpose and materialize. *)
+ArrayTranspose[t_ ? opaqueWrapperQ, perm_] := ArrayTranspose[ArrayMaterialize[t], perm]
+
 ArrayTranspose[t_, perm_] := If[ZeroArrayQ[t], {}, SimplifyArray @ Transpose[t, Replace[perm, m_ <-> n_ :> Cycles[{{m, n}}]]]]
 
 ArrayTranspose[(Verbatim[Transpose] | Inactive[Transpose])[t_, perm1_], perm2_] := ArrayTranspose[t, PermutationList[PermutationProduct[perm1, perm2]]]
@@ -440,6 +627,13 @@ ArrayTranspose[expr : (f_InterpolatingFunction)[parameter_], perm_] :=
    clause comes before the generic one, which would otherwise match first. *)
 ArrayContract[arrays : {__ ? ArrayContainerQ}, c_] := ArrayContract[Inactive[TensorProduct] @@ arrays, c] /; ! AllTrue[arrays, ListQ]
 
+(* TensorContract does not evaluate on the wrapper heads, so they contract
+   their materialized data instead of returning an inert wrapper. *)
+ArrayContract[a_ ? wrapperExplicitQ, c_] := ArrayContract[ArrayMaterialize[a], c]
+
+(* TensorContract preserves SymmetrizedArray structure natively (the
+   contraction of a structured atom stays a SymmetrizedArray), so structured
+   arrays deliberately stay on this native path. *)
 ArrayContract[array_, c_] := If[ZeroArrayQ[array], {}, SimplifyArray[TensorContract[array, c]]]
 
 
@@ -469,6 +663,11 @@ ArrayMap[f_, a_SparseArray, level_ : {-1}] := If[ elementLevelQ[level, ArrayRank
 ArrayMap[f_, a_List, level_ : {-1}] := With[{result = Map[f, a, level]},
     If[Developer`PackedArrayQ[a], Developer`ToPackedArray[result], result]
 ]
+
+(* Wrapper containers map over their materialized data, which for
+   QuantityArray means the magnitudes (QuantityMagnitude route, never
+   Normal), densifying like the NumericArray precedent below. *)
+ArrayMap[f_, a_ ? wrapperExplicitQ, level_ : {-1}] := Map[f, ArrayMaterialize[a], level]
 
 ArrayMap[f_, a_ ? ArrayExplicitQ, level_ : {-1}] := Map[f, Normal[a], level]
 
@@ -501,6 +700,16 @@ ArrayReplaceAll[a_SparseArray, rules_] := SparseArray[
     a["ImplicitValue"] /. rules
 ]
 
+(* Structured atoms are substitution-opaque: sa /. rules returns a
+   SymmetrizedArray whose elements are untouched (ReplaceAll does not
+   penetrate the atom), a silent no-op.  Substitution therefore goes
+   Normal -> ReplaceAll, densifying. *)
+ArrayReplaceAll[a : _SymmetrizedArray | _StructuredArray, rules_] := ReplaceAll[Normal[a], rules]
+
+(* Wrapper containers substitute on the materialized data for the same
+   reason: rules cannot reach inside the wrapper atoms. *)
+ArrayReplaceAll[a_ ? wrapperExplicitQ, rules_] := ReplaceAll[ArrayMaterialize[a], rules]
+
 ArrayReplaceAll[a_, rules_] := ReplaceAll[a, rules]
 
 
@@ -508,6 +717,10 @@ ArrayReplaceAll[a_, rules_] := ReplaceAll[a, rules]
    Normal and re-wraps; lazy containers funnel through ArrayMaterialize. *)
 
 ArrayConjugate[a_NumericArray] := NumericArray[Conjugate[Normal[a]]]
+
+(* QuantityArray conjugates natively and keeps its wrapper on the generic
+   explicit clause; the storage wrappers materialize first. *)
+ArrayConjugate[a_ ? opaqueWrapperQ] := Conjugate[ArrayMaterialize[a]]
 
 ArrayConjugate[a_ ? ArrayExplicitQ] := Conjugate[a]
 
@@ -517,6 +730,10 @@ ArrayConjugate[a_ ? ArraySymbolicQ] := Conjugate[a]
 
 
 ArrayAllZeroQ[a_SparseArray] := TrueQ[a["ImplicitValue"] == 0] && AllTrue[a["ExplicitValues"], TrueQ[# == 0] &]
+
+(* Wrappers test their materialized data; for QuantityArray this makes zero
+   magnitudes count as zero, matching the magnitude-based materialization. *)
+ArrayAllZeroQ[a_ ? wrapperExplicitQ] := AllTrue[Flatten[ArrayMaterialize[a]], TrueQ[# == 0] &]
 
 ArrayAllZeroQ[a_ ? ArrayExplicitQ] := AllTrue[Flatten[Normal[a]], TrueQ[# == 0] &]
 
@@ -554,6 +771,10 @@ ArrayVector[sa_SparseArray] := With[{dims = sa["Dimensions"]},
 
 ArrayVector[x_ ? NumericQ] := x
 
+(* QuantityArray flattens natively and keeps its wrapper on the generic
+   clause; the remaining wrappers flatten their materialized data. *)
+ArrayVector[a_ ? opaqueWrapperQ] := Flatten[ArrayMaterialize[a]]
+
 ArrayVector[a_ ? ArrayExplicitQ] := Flatten[a]
 
 ArrayVector[expr : (f_InterpolatingFunction)[parameter_]] :=
@@ -561,6 +782,12 @@ ArrayVector[expr : (f_InterpolatingFunction)[parameter_]] :=
 
 
 (* === reshape and pad (non-colliding System equivalents) === *)
+
+(* QuantityArray reshapes natively via ArrayReshape and keeps its wrapper on
+   the generic clauses; the remaining wrappers reshape materialized data. *)
+ReshapeArray[a_ ? opaqueWrapperQ, dims : {___Integer ? NonNegative}] := ArrayReshape[ArrayMaterialize[a], dims]
+
+ReshapeArray[a_ ? opaqueWrapperQ, dims : {___Integer ? NonNegative}, pad_] := ArrayReshape[ArrayMaterialize[a], dims, pad]
 
 ReshapeArray[a_ ? ArrayExplicitQ, dims : {___Integer ? NonNegative}] := ArrayReshape[a, dims]
 
@@ -579,6 +806,13 @@ ReshapeArray[expr : (f_InterpolatingFunction)[parameter_], dims : {___Integer ? 
 PadArray[a_NumericArray, spec_] := NumericArray[ArrayPad[Normal[a], spec]]
 
 PadArray[a_NumericArray, spec_, padding_] := NumericArray[ArrayPad[Normal[a], spec, padding]]
+
+(* ArrayPad on a QuantityArray degrades to a mixed List of Quantity elements
+   and plain padding, so every wrapper (QuantityArray included) pads its
+   materialized data. *)
+PadArray[a_ ? wrapperExplicitQ, spec_] := ArrayPad[ArrayMaterialize[a], spec]
+
+PadArray[a_ ? wrapperExplicitQ, spec_, padding_] := ArrayPad[ArrayMaterialize[a], spec, padding]
 
 PadArray[a_ ? ArrayExplicitQ, spec_] := ArrayPad[a, spec]
 

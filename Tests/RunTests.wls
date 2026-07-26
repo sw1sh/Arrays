@@ -1,6 +1,6 @@
 #!/usr/bin/env wolframscript
 
-(* Test runner for WolframInstitute/ArrayUtilities *)
+(* Test runner for Wolfram/Arrays *)
 (* Usage: wolframscript -f Tests/RunTests.wls [pattern] *)
 (* Examples: *)
 (*   wolframscript -f Tests/RunTests.wls            - run all .wlt files *)
@@ -8,13 +8,13 @@
 
 $rootDir = DirectoryName[$InputFileName];
 (* repo layout nests the paclet one level deep (submodule convention):
-   <repo>/ArrayUtilities/PacletInfo.wl, tests stay at <repo>/Tests *)
-$pacletDir = FileNameJoin[{$rootDir, "..", "ArrayUtilities"}];
+   <repo>/Arrays/PacletInfo.wl, tests stay at <repo>/Tests *)
+$pacletDir = FileNameJoin[{$rootDir, "..", "Arrays"}];
 
 (* Uninstall any repo-installed version to ensure local source takes priority *)
-Quiet[PacletUninstall /@ PacletFind["WolframInstitute/ArrayUtilities"]];
+Quiet[PacletUninstall /@ PacletFind["Wolfram/Arrays"]];
 PacletDirectoryLoad[$pacletDir];
-Needs["WolframInstitute`ArrayUtilities`"];
+Needs["Wolfram`Arrays`"];
 
 (* Find test files *)
 pattern = If[Length[$ScriptCommandLine] > 1, $ScriptCommandLine[[2]], ""];
@@ -29,7 +29,7 @@ If[Length[testFiles] == 0,
 ];
 
 Print["======================================================="];
-Print["  ArrayUtilities Test Report"];
+Print["  Arrays Test Report"];
 Print["======================================================="];
 Print["  Date: ", DateString[]];
 Print["  Paclet: ", $pacletDir];

@@ -1,6 +1,6 @@
-(* Tests for WolframInstitute/ArrayUtilities. Run via Tests/RunTests.wls or TestReport. *)
+(* Tests for Wolfram/Arrays. Run via Tests/RunTests.wls or TestReport. *)
 
-Needs["WolframInstitute`ArrayUtilities`"]
+Needs["Wolfram`Arrays`"]
 
 (* === fixtures === *)
 
@@ -901,6 +901,207 @@ VerificationTest[
     {ArrayTranspose[ConstantArray[1, {0, 2}], {2, 1}], ArrayContract[Inactive[TensorProduct][{}, {1, 2}], {{1, 2}}]},
     {{}, {}},
     TestID -> "edge-zero-dimension-structural-short-circuit"
+]
+
+EndTestSection[]
+
+
+BeginTestSection["Arrays - admitted wrapper containers"]
+
+(* QuantityArray: compute-native, materializes via QuantityMagnitude (Normal is the
+   slow unpacked trap), rebuilds from the "UnitBlock" metadata *)
+VerificationTest[
+    With[{qa = QuantityArray[{1., 2., 3.}, "Meters"]},
+        {ArrayExplicitQ[qa], ArrayContainerQ[qa], ArrayComputeNativeQ[qa], ArrayDimensions[qa], ArrayNumericQ[qa]}
+    ],
+    {True, True, True, {3}, True},
+    TestID -> "Wrapper-QuantityArray-classification"
+]
+
+VerificationTest[
+    With[{qa = QuantityArray[{1., 2., 3.}, "Meters"]},
+        {ArrayMaterialize[qa] === QuantityMagnitude[qa], Developer`PackedArrayQ[ArrayMaterialize[qa]]}
+    ],
+    {True, True},
+    TestID -> "Wrapper-QuantityArray-materialize-magnitudes-packed"
+]
+
+VerificationTest[
+    With[{qa = QuantityArray[{{1., 2.}, {3., 4.}}, "Seconds"]},
+        With[{rebuilt = QuantityArray[2 ArrayMaterialize[qa], qa["UnitBlock"]]},
+            {MatchQ[rebuilt, _QuantityArray], QuantityMagnitude[rebuilt]}
+        ]
+    ],
+    {True, {{2., 4.}, {6., 8.}}},
+    TestID -> "Wrapper-QuantityArray-rebuild-roundtrip"
+]
+
+VerificationTest[
+    {ArrayNumberQ[QuantityArray[{1, 2}, "Meters"]], ArrayNumberQ[QuantityArray[{1., 2.}, "Meters"]]},
+    {False, True},
+    TestID -> "Wrapper-QuantityArray-numberq-follows-magnitudes"
+]
+
+(* TabularColumn: compute-native, per-instance numericity via ElementType *)
+VerificationTest[
+    With[{tc = TabularColumn[{1., 2., 3.}]},
+        {ArrayExplicitQ[tc], ArrayComputeNativeQ[tc], ArrayDimensions[tc], ArrayNumericQ[tc], Developer`PackedArrayQ[ArrayMaterialize[tc]]}
+    ],
+    {True, True, {3}, True, True},
+    TestID -> "Wrapper-TabularColumn-classification-materialize"
+]
+
+VerificationTest[
+    ArrayNumericQ[TabularColumn[{"a", "b"}]],
+    False,
+    TestID -> "Wrapper-TabularColumn-string-column-not-numeric"
+]
+
+VerificationTest[
+    ArrayNumericQ[TabularColumn[{1., Missing[], 3.}]],
+    False,
+    TestID -> "Wrapper-TabularColumn-missing-disqualifies"
+]
+
+VerificationTest[
+    With[{tc = TabularColumn[{1., 2., 3.}]},
+        Normal[TabularColumn[2 ArrayMaterialize[tc], tc["ElementType"]]]
+    ],
+    {2., 4., 6.},
+    TestID -> "Wrapper-TabularColumn-rebuild-roundtrip"
+]
+
+(* Tabular: storage-only; anonymous Normal is packed; named route goes per-column *)
+VerificationTest[
+    With[{tab = Tabular[{{1., 2.}, {3., 4.}, {5., 6.}}]},
+        {ArrayExplicitQ[tab], ArrayComputeNativeQ[tab], ArrayDimensions[tab], ArrayNumericQ[tab], Developer`PackedArrayQ[ArrayMaterialize[tab]]}
+    ],
+    {True, False, {3, 2}, True, True},
+    TestID -> "Wrapper-Tabular-anonymous-classification-materialize"
+]
+
+VerificationTest[
+    With[{m = {{1., 2.}, {3., 4.}, {5., 6.}}},
+        ArrayMaterialize[Tabular[m, {"a", "b"}]] == m
+    ],
+    True,
+    TestID -> "Wrapper-Tabular-named-percolumn-route"
+]
+
+VerificationTest[
+    With[{tab = Tabular[{{1, Missing["bad"]}, {2, 3.5}}, {"x", "y"}]},
+        ArrayNumericQ[tab]
+    ],
+    False,
+    TestID -> "Wrapper-Tabular-missing-disqualifies"
+]
+
+VerificationTest[
+    With[{m = {{1., 2.}, {3., 4.}}},
+        ArrayMaterialize[Tabular[ArrayMaterialize[Tabular[m]]]] == m
+    ],
+    True,
+    TestID -> "Wrapper-Tabular-rebuild-roundtrip"
+]
+
+(* Dataset: storage-only; shape and numericity off the type signature. Normal is a
+   pass-through of the wrapped storage, so packedness follows construction: a Dataset
+   built over a packed matrix materializes packed. *)
+VerificationTest[
+    With[{ds = Dataset[Developer`ToPackedArray[{{1., 2.}, {3., 4.}}]]},
+        {ArrayExplicitQ[ds], ArrayComputeNativeQ[ds], ArrayDimensions[ds], ArrayNumericQ[ds], Developer`PackedArrayQ[ArrayMaterialize[ds]]}
+    ],
+    {True, False, {2, 2}, True, True},
+    TestID -> "Wrapper-Dataset-classification-materialize"
+]
+
+VerificationTest[
+    {ArrayNumberQ[Dataset[{1, 2, 3}]], ArrayNumberQ[Dataset[{1., 2., 3.}]]},
+    {False, True},
+    TestID -> "Wrapper-Dataset-numberq-off-type"
+]
+
+(* ByteArray: storage-only integer vector *)
+VerificationTest[
+    With[{ba = ByteArray[{1, 2, 3, 255}]},
+        {ArrayExplicitQ[ba], ArrayComputeNativeQ[ba], ArrayDimensions[ba], ArrayNumericQ[ba], ArrayNumberQ[ba], ArrayMaterialize[ba]}
+    ],
+    {True, False, {4}, True, False, {1, 2, 3, 255}},
+    TestID -> "Wrapper-ByteArray-classification-materialize"
+]
+
+(* EventSeries: storage-only time-indexed; raw "Values" needs Normal in v15 *)
+VerificationTest[
+    With[{ev = EventSeries[{{1., 2.}, {3., 4.}, {5., 6.}}, {{0, 1, 2}}]},
+        {ArrayExplicitQ[ev], ArrayComputeNativeQ[ev], ArrayDimensions[ev], ArrayMaterialize[ev] == {{1., 2.}, {3., 4.}, {5., 6.}}}
+    ],
+    {True, False, {3, 2}, True},
+    TestID -> "Wrapper-EventSeries-classification-materialize"
+]
+
+VerificationTest[
+    With[{ev = EventSeries[{{1., 2.}, {3., 4.}}, {{0, 1}}]},
+        With[{rebuilt = EventSeries[ArrayMaterialize[ev], {Normal[ev["Times"]]}]},
+            ArrayMaterialize[rebuilt] == ArrayMaterialize[ev]
+        ]
+    ],
+    True,
+    TestID -> "Wrapper-EventSeries-rebuild-roundtrip"
+]
+
+(* DataStructure stores: rank-1, reference semantics defeated by snapshot-on-ingest *)
+VerificationTest[
+    With[{ds = CreateDataStructure["DynamicArray", {1., 2., 3.}]},
+        {ArrayExplicitQ[ds], ArrayComputeNativeQ[ds], ArrayDimensions[ds], ArrayNumericQ[ds], Developer`PackedArrayQ[ArrayMaterialize[ds]]}
+    ],
+    {True, False, {3}, True, True},
+    TestID -> "Wrapper-DataStructure-DynamicArray-classification"
+]
+
+VerificationTest[
+    Module[{ds = CreateDataStructure["DynamicArray", {1., 2., 3.}], snapshot},
+        snapshot = ArrayMaterialize[ds];
+        ds["Append", 4.];
+        {snapshot, ds["Length"]}
+    ],
+    {{1., 2., 3.}, 4},
+    TestID -> "Wrapper-DataStructure-snapshot-defeats-aliasing"
+]
+
+VerificationTest[
+    ArrayExplicitQ[CreateDataStructure["LinkedList"]],
+    False,
+    TestID -> "Wrapper-DataStructure-nonarray-store-rejected"
+]
+
+(* SymmetrizedArray substitution opacity: ArrayReplaceAll must actually substitute *)
+VerificationTest[
+    Block[{aa},
+        With[{sa = SymmetrizedArray[{{1, 2} -> aa}, {2, 2}, Antisymmetric[{1, 2}]]},
+            ArrayReplaceAll[sa, aa -> 5]
+        ]
+    ],
+    {{0, 5}, {-5, 0}},
+    TestID -> "Wrapper-SymmetrizedArray-replaceall-substitutes"
+]
+
+(* Association stays rejected: entry multiset is not a faithful shape *)
+VerificationTest[
+    ArrayContainerQ[<|1 -> 1.5, 2 -> 2.5, 5 -> -1.|>],
+    False,
+    TestID -> "Wrapper-Association-stays-rejected"
+]
+
+(* compute-native capability pins across the board *)
+VerificationTest[
+    ArrayComputeNativeQ /@ {
+        SparseArray[{1., 0., 2.}],
+        Developer`ToPackedArray[{1., 2.}],
+        NumericArray[{1., 2.}, "Real64"],
+        SymmetrizedArray[{{1, 2} -> 1.}, {2, 2}, Symmetric[{1, 2}]]
+    },
+    {True, True, False, False},
+    TestID -> "Wrapper-ComputeNativeQ-pins"
 ]
 
 EndTestSection[]

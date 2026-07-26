@@ -1,9 +1,11 @@
-# WolframInstitute/ArrayUtilities
+# Wolfram/Arrays
 
 A domain-neutral abstraction over Wolfram Language array containers: one dispatch layer
 for classifying, introspecting, and operating on arrays regardless of how they are
 stored - explicit (`SparseArray`, packed arrays, `List`, `NumericArray`,
-structured arrays), lazy-parametric (array-valued inert applications such as
+structured arrays, and shape-introspectable wrappers: `QuantityArray`,
+`TabularColumn`, `Tabular`, `Dataset`, `ByteArray`, `EventSeries`, and
+DataStructure array stores), lazy-parametric (array-valued inert applications such as
 `InterpolatingFunction[...][t]` and `ParametricFunction`), and symbolic
 (`VectorSymbol` / `MatrixSymbol` / `ArraySymbol`, assumption-registered symbols,
 inactive tensor expression trees).
@@ -28,7 +30,7 @@ Load the paclet from source:
 
 ```wolfram
 PacletDirectoryLoad["path/to/ArrayUtilities/ArrayUtilities"]
-Needs["WolframInstitute`ArrayUtilities`"]
+Needs["Wolfram`Arrays`"]
 ```
 
 Run the tests:

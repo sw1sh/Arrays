@@ -75,6 +75,23 @@ pageAssignments[srcFile_String] := DeleteDuplicates @ StringCases[
 
 clearPageState[srcFile_String] := Quiet @ Remove @@ pageAssignments[srcFile]
 
+(* The definition notebook's paclet-manifest panel resolves the paclet directory
+   from the notebook's own directory by default, which here is the repository
+   root - one level above the paclet, so CheckDefinitionNotebook reports
+   PacletDirectoryInvalid2.  Point the panel at the paclet explicitly.  (The
+   frontmatter cannot: MarkdownToNotebook fills "PacletDirectory" from it but
+   always writes "PacletDirectoryType" -> "Notebook".) *)
+
+pointAtPaclet[nbFile_String] := Export[nbFile,
+    Get[nbFile] /. Cell[boxes_, "PacletDirectoryChooser", o___] :> Cell[boxes, "PacletDirectoryChooser",
+        Sequence @@ Replace[{o},
+            (TaggingRules -> tr_) :> (TaggingRules -> Join[
+                {"PacletDirectoryType" -> "Custom", "PacletDirectory" -> pacletDir},
+                DeleteCases[tr, ("PacletDirectoryType" | "PacletDirectory") -> _]]),
+            {1}]],
+    "NB"
+]
+
 buildDoc[srcFile_String] := Block[{tmpl, dir, out},
     If[ ! StringStartsQ[StringTrim @ Import[srcFile, "Text"], "---"],
         Print["  (skip ", FileNameTake[srcFile], ": no frontmatter)"];
@@ -89,6 +106,7 @@ buildDoc[srcFile_String] := Block[{tmpl, dir, out},
     Quiet @ CreateDirectory[dir, CreateIntermediateDirectories -> True];
     out = FileNameJoin[{dir, FileBaseName[srcFile] <> ".nb"}];
     mtn[srcFile, out];
+    If[tmpl === "Paclet", pointAtPaclet[out]];
     clearPageState[srcFile];
     Print["  ", FileNameTake[srcFile], " -> ", FileNameDrop[out, FileNameDepth[repoDir]]]
 ]

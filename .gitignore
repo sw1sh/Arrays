@@ -1,4 +1,5 @@
 .DS_Store
 *.mx
 build/
-docs/
+# Generated documentation notebooks (docs/*.md is the source of truth)
+Arrays/Documentation/

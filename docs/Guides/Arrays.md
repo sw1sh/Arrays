@@ -47,6 +47,7 @@ The Arrays paclet treats the many array representations of the Wolfram Language 
 - `ArrayExplicitPositions` the positions of the explicitly stored values
 - `ArrayExplicitLength` the number of explicitly stored values
 - `ArrayMaterialize` an explicit array of scalar expressions from a container of any tier
+- `ArrayComputable` the least conversion of a container that makes native arithmetic work
 - `ArrayPack` best-effort packed array conversion that never destroys exact values
 
 ### Structural operations

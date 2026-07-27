@@ -4,6 +4,7 @@ PackageExport[ArrayExplicitValues]
 PackageExport[ArrayExplicitPositions]
 PackageExport[ArrayExplicitLength]
 PackageExport[ArrayMaterialize]
+PackageExport[ArrayComputable]
 PackageExport[ArrayPack]
 
 
@@ -14,6 +15,8 @@ ArrayExplicitPositions::usage = "ArrayExplicitPositions[a] gives the positions o
 ArrayExplicitLength::usage = "ArrayExplicitLength[a] gives the number of explicitly stored values of a SparseArray, or of nonzero values of any other explicit array container via an on-demand SparseArray wrap; lazy and symbolic containers give Missing[\"NotExplicit\"]."
 
 ArrayMaterialize::usage = "ArrayMaterialize[a] gives an explicit array of scalar expressions for any array container: Normal for explicit containers, with wrapper-specific routes: QuantityMagnitude for a QuantityArray, per-column Normal for a named Tabular, Normal of the \"Values\" column for an EventSeries, and an immediate packed snapshot of the elements for a DataStructure store, whose handles otherwise alias each other; a lazy container expands per scalar where its head has a per-scalar form (reinterpolation for an InterpolatingFunction, per-position branch threading for a Piecewise, an array of scalar Functions for a Function) and through Indexed where it has none, as for a ParametricFunction; a deferred structural tree, whose leaves are all explicit, is activated; the leafless symbolic containers give the input itself."
+
+ArrayComputable::usage = "ArrayComputable[a] gives a form of an array container that the kernel computes with directly: a container whose arithmetic is native (ArrayComputeNativeQ) is returned unchanged, and any other explicit container is materialized, since Dot, Norm, KroneckerProduct and Eigensystem do not traverse a storage-only container. Lazy and symbolic containers are returned unchanged, because there is no computable form of one short of binding its parameters."
 
 ArrayPack::usage = "ArrayPack[a] gives a best-effort packed array conversion of an explicit array container, trying the plain, Real and Complex forms of Developer`ToPackedArray in turn; the coercing forms are accepted only when every value survives at machine precision, and any input that cannot be packed faithfully, including lazy and symbolic containers, is returned unchanged."
 
@@ -110,6 +113,21 @@ ArrayMaterialize[a_ ? ArrayLazyQ] := lazyMaterialize[a]
 ArrayMaterialize[a_ ? deferredTreeQ] := Activate[a]
 
 ArrayMaterialize[a_ ? ArraySymbolicQ] := a
+
+
+(* The least conversion that makes native arithmetic work.  This is not
+   ArrayMaterialize with a guard: materialization always produces an explicit
+   array of scalars, where this preserves a SparseArray's sparsity and a packed
+   array's packing, which is the whole reason those containers were chosen.
+   Lazy and symbolic containers fall through unchanged rather than materializing:
+   a lazy container's computable form is what substituting its parameters gives,
+   and a symbolic one has no elements to compute with at all. *)
+
+ArrayComputable[a_ ? ArrayComputeNativeQ] := a
+
+ArrayComputable[a_ ? ArrayExplicitQ] := ArrayMaterialize[a]
+
+ArrayComputable[a_] := a
 
 
 (* Best-effort packing: the plain form first, then the Real and Complex coercing

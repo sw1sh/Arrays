@@ -23,6 +23,7 @@ PacletObject[
         "Symbols" -> {
           "Wolfram`Arrays`ArrayAllZeroQ",
           "Wolfram`Arrays`ArrayCoerce",
+          "Wolfram`Arrays`ArrayComputable",
           "Wolfram`Arrays`ArrayComputeNativeQ",
           "Wolfram`Arrays`ArrayConjugate",
           "Wolfram`Arrays`ArrayContainerQ",

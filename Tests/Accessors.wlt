@@ -294,4 +294,76 @@ VerificationTest[
     TestID -> "Lazy-accessors-pack-unchanged"
 ]
 
+
+(* ArrayComputable: the least conversion that makes native arithmetic work. *)
+
+(* Compute-native containers pass through identically, which is the whole point
+   of the function: an unconditional ArrayMaterialize would densify this. *)
+VerificationTest[
+    With[{sa = SparseArray[{1 -> 1, 5 -> 2}, 10]}, ArrayComputable[sa] === sa],
+    True,
+    TestID -> "Computable-SparseArray-unchanged"
+]
+
+VerificationTest[
+    Developer`PackedArrayQ @ ArrayComputable[Developer`ToPackedArray[{1., 2., 3.}]],
+    True,
+    TestID -> "Computable-packed-stays-packed"
+]
+
+VerificationTest[
+    With[{qa = QuantityArray[{1, 2, 3}, "Meters"]}, ArrayComputable[qa] === qa],
+    True,
+    TestID -> "Computable-QuantityArray-unchanged"
+]
+
+(* Storage-only containers materialize, because Dot and friends do not traverse
+   them; each of these heads is one Dot away from an error without this. *)
+VerificationTest[
+    ArrayComputable[NumericArray[{1, 2, 3}, "Integer64"]],
+    {1, 2, 3},
+    TestID -> "Computable-NumericArray-materializes"
+]
+
+VerificationTest[
+    ArrayComputable[ByteArray[{1, 2, 3}]],
+    {1, 2, 3},
+    TestID -> "Computable-ByteArray-materializes"
+]
+
+VerificationTest[
+    ArrayComputable[SymmetrizedArray[{{1, 2} -> 5}, {2, 2}, Symmetric[{1, 2}]]],
+    {{0, 5}, {5, 0}},
+    TestID -> "Computable-StructuredArray-materializes"
+]
+
+(* A materialized storage-only container actually computes, which is the
+   property the function exists to deliver. *)
+VerificationTest[
+    ArrayComputable[NumericArray[{1, 2, 3}, "Integer64"]] . {1, 1, 1},
+    6,
+    TestID -> "Computable-NumericArray-then-Dot"
+]
+
+(* Lazy and symbolic containers have no computable form short of binding their
+   parameters, so they pass through rather than materializing. *)
+VerificationTest[
+    Map[ArrayComputable[#] === # &, {$pfLazy, $fn, $pw}],
+    {True, True, True},
+    TestID -> "Computable-lazy-unchanged"
+]
+
+VerificationTest[
+    With[{m = MatrixSymbol["M", {2, 3}]}, ArrayComputable[m] === m],
+    True,
+    TestID -> "Computable-symbolic-unchanged"
+]
+
+(* Non-container input passes through: this is a conversion, not a validator. *)
+VerificationTest[
+    ArrayComputable["not an array"],
+    "not an array",
+    TestID -> "Computable-non-container-unchanged"
+]
+
 EndTestSection[]

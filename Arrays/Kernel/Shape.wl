@@ -81,6 +81,18 @@ assumptionDomain[s_Symbol] := FirstCase[
    wrong shape, gives {} without leaking messages. *)
 ArrayDimensions[t_] := Quiet[Check[Replace[TensorDimensions[t], Except[_List] :> {}], {}]]
 
+(* The two containers that carry the bulk of the traffic answer from Dimensions
+   directly, two orders of magnitude cheaper than the message-trapping probe
+   above, which pays for Quiet and Check on every call.  A SparseArray is
+   rectangular by construction; a list has to earn it, since Dimensions reports
+   the depth a ragged list is rectangular to rather than refusing it. *)
+
+ArrayDimensions[a_SparseArray] := Dimensions[a]
+
+ArrayDimensions[a_List] := With[{dims = Dimensions[a]},
+    If[Developer`PackedArrayQ[a] || ArrayQ[a, Length[dims]], dims, {}]
+]
+
 (* TensorDimensions does not handle NumericArray *)
 ArrayDimensions[a_NumericArray] := Dimensions[a]
 

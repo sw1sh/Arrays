@@ -375,4 +375,46 @@ VerificationTest[
     TestID -> "shape-setdimensions-arrayname-symbolic-heads"
 ]
 
+
+(* The List and SparseArray fast clauses must agree with the generic
+   TensorDimensions probe they shadow, ragged input included: Dimensions alone
+   would report the depth a ragged list is rectangular to rather than refusing
+   it, so the clause has to verify rectangularity before trusting it. *)
+
+VerificationTest[
+    ArrayDimensions[SparseArray[{{1, 1, 1} -> 1}, {3, 4, 5}]],
+    {3, 4, 5},
+    TestID -> "shape-fast-sparsearray"
+]
+
+VerificationTest[
+    ArrayDimensions[Developer`ToPackedArray[{{1., 2.}, {3., 4.}}]],
+    {2, 2},
+    TestID -> "shape-fast-packed-list"
+]
+
+VerificationTest[
+    ArrayDimensions[{{1, 2}, {3}}],
+    {},
+    TestID -> "shape-fast-ragged-list-refused"
+]
+
+VerificationTest[
+    ArrayDimensions[{{1, 2}, {3, x}}],
+    {2, 2},
+    TestID -> "shape-fast-unpacked-symbolic-list"
+]
+
+VerificationTest[
+    ArrayDimensions[{}],
+    {0},
+    TestID -> "shape-fast-empty-list"
+]
+
+VerificationTest[
+    ArrayDimensions[{{1, 2}, {3, 4}, {5, {6}}}],
+    {},
+    TestID -> "shape-fast-ragged-at-depth"
+]
+
 EndTestSection[]

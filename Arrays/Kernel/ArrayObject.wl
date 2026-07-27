@@ -252,6 +252,8 @@ ArrayObject /: ArrayRank[obj_ArrayObject] := objectData[ArrayRank, obj]
 
 ArrayObject /: ArrayMaterialize[obj_ArrayObject] := objectData[ArrayMaterialize, obj]
 
+ArrayObject /: ArrayComputable[obj_ArrayObject] := objectData[ArrayComputable, obj]
+
 ArrayObject /: Normal[obj_ArrayObject] := objectData[ArrayMaterialize, obj]
 
 

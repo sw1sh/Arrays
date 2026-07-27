@@ -99,44 +99,36 @@ Print["building Wolfram/Arrays documentation"]
 
 Scan[buildDoc, Sort @ FileNames["*.md", FileNameJoin[{repoDir, "docs"}], Infinity]]
 
-(* DocumentationBuild stage: the mtn output is an *authoring* notebook - the
-   ExamplesInitializationSection is only collapsed into the Examples section at
-   build time, so a page served raw would show a double section rule and fold
-   the examples under "Examples Initialization". Build each page in place so
-   Examples render as their own section.
+(* No DocumentationBuild stage.  The repository builds documentation itself and
+   wants AUTHORING notebooks; a page already built in place does not survive
+   PacletBuild, which drops it from the paclet - the guide was the only page to
+   ship while this stage ran, and it was the only one exempt from it. *)
 
-   Guides are excluded: they carry no Examples section, so there is nothing for
-   the build to collapse, and the paclet-repository check requires the main
-   guide page to be submitted in authoring form. *)
+(* The definition notebook carries the file list the paclet is BUILT from, and
+   MarkdownToNotebook fills it from the MainGuide frontmatter alone.  Left at
+   that, the submitted paclet ships the guide and nothing else - no reference
+   pages, no tutorials, and so no documentation sidebar on the repository page.
+   Refreshing the panel from the paclet directory, after the notebooks exist,
+   is what puts every generated page into the paclet. *)
 
-Print["running DocumentationBuild on generated notebooks"]
+Print["refreshing the definition notebook's paclet file list"]
 
-Needs["DocumentationBuild`"]
+Needs["DefinitionNotebookClient`"]
 
-failed = 0
+defNb = FileNameJoin[{pacletDir, "ResourceDefinition.nb"}]
 
-Scan[
-    Function[nb, Block[{built},
-        (* DocumentationBuildNotebook returns a NotebookObject in current versions;
-           read its Notebook expression back and close the front-end window *)
-        built = Quiet @ UsingFrontEnd @ Replace[
-            DocumentationBuild`DocumentationBuildNotebook[None, Get[nb]],
-            obj_NotebookObject :> With[{expr = NotebookGet[obj]}, NotebookClose[obj]; expr]
+If[ FileExistsQ[defNb],
+    Module[{count},
+        count = UsingFrontEnd @ Block[{nbo, n},
+            nbo = NotebookOpen[defNb, Visible -> False];
+            DefinitionNotebookClient`RefreshFileTreeCells["Paclet", nbo, pacletDir, "PacletFiles"];
+            NotebookSave[nbo];
+            NotebookClose[nbo];
+            Length @ StringCases[Import[defNb, "Text"], ".nb\"" | ".wl\""]
         ];
-        If[ MatchQ[built, _Notebook],
-            Export[nb, built, "NB"];
-            Print["  built ", FileNameDrop[nb, FileNameDepth[repoDir]],
-                " (", Count[built, Cell[___], Infinity], " cells)"],
-            failed++;
-            Print["  FAILED: ", FileNameDrop[nb, FileNameDepth[repoDir]], " -> ", Head[built]]
-        ]
-    ]],
-    Sort @ Join[
-        FileNames["*.nb", FileNameJoin[{pacletDir, "Documentation", "English", "ReferencePages"}], Infinity],
-        FileNames["*.nb", FileNameJoin[{pacletDir, "Documentation", "English", "Tutorials"}], Infinity]
-    ]
+        Print["  file entries now listed: ", count]
+    ],
+    Print["  (no ResourceDefinition.nb yet)"]
 ]
-
-If[failed > 0, Print["done with ", failed, " DocumentationBuild failure(s)"]; Exit[1]]
 
 Print["done"]

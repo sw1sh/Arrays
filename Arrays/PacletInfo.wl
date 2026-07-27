@@ -7,7 +7,7 @@ PacletObject[
     "Creator" -> "Nikolay Murzin",
     "License" -> "MIT",
     "PublisherID" -> "Wolfram",
-    "Version" -> "1.1.0",
+    "Version" -> "1.1.4",
     "WolframVersion" -> "14.1+",
     "PrimaryContext" -> "Wolfram`Arrays`",
     "Extensions" -> {
@@ -58,7 +58,8 @@ PacletObject[
           "Wolfram`Arrays`SimplifyArray",
           "Wolfram`Arrays`ZeroArrayQ"
         }
-      }
+      },
+      {"Documentation", "Language" -> "English"}
     }
   |>
 ]

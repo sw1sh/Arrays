@@ -115,17 +115,18 @@ ArrayMaterialize[a_ ? deferredTreeQ] := Activate[a]
 ArrayMaterialize[a_ ? ArraySymbolicQ] := a
 
 
-(* The least conversion that makes native arithmetic work.  This is not
-   ArrayMaterialize with a guard: materialization always produces an explicit
-   array of scalars, where this preserves a SparseArray's sparsity and a packed
-   array's packing, which is the whole reason those containers were chosen.
-   Lazy and symbolic containers fall through unchanged rather than materializing:
-   a lazy container's computable form is what substituting its parameters gives,
-   and a symbolic one has no elements to compute with at all. *)
+(* The least conversion that makes native arithmetic work.  A container that
+   already computes is returned untouched, which is the whole point: an
+   unconditional ArrayMaterialize would densify a SparseArray and unpack a
+   packed array at the moment a caller only wanted to be able to call Dot.
+   Everything else materializes, lazy containers included, since a lazy
+   container's per-scalar expansion is an ordinary array of expressions in its
+   parameters and does compute.  The leafless symbolic containers need no
+   clause of their own: ArrayMaterialize returns those unchanged already. *)
 
 ArrayComputable[a_ ? ArrayComputeNativeQ] := a
 
-ArrayComputable[a_ ? ArrayExplicitQ] := ArrayMaterialize[a]
+ArrayComputable[a_ ? ArrayContainerQ] := ArrayMaterialize[a]
 
 ArrayComputable[a_] := a
 

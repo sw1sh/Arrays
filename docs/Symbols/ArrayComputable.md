@@ -17,12 +17,13 @@ RelatedGuides: [Arrays]
 
 - A container satisfying [ArrayComputeNativeQ]() is returned unchanged, so a [SparseArray]() keeps its sparsity and a packed array keeps its packing.
 - Any other explicit container is materialized through [ArrayMaterialize](), because [Dot](), [Norm](), [KroneckerProduct]() and [Eigensystem]() do not traverse a storage-only container such as a [NumericArray]().
-- Lazy and symbolic containers are returned unchanged: the computable form of a lazy container is what binding its parameters gives, and a symbolic container has no elements to compute with.
-- [ArrayComputable]() differs from [ArrayMaterialize](), which always produces an explicit array of scalar elements and therefore discards sparsity and packing.
+- A lazy container materializes to its per-scalar expansion, an ordinary array of expressions in its parameters, which computes; binding the parameters first with [ArrayReplaceAll]() is cheaper, since it evaluates the underlying function once for the whole array rather than once per element.
+- A leafless symbolic container is returned unchanged, because [ArrayMaterialize]() returns one unchanged: it has no elements to compute with.
+- [ArrayComputable]() differs from [ArrayMaterialize]() only on compute-native input, which it returns untouched where [ArrayMaterialize]() would discard sparsity and packing.
 
 ## Basic Examples
 
-<!-- #| annotation: 27.07.26: Design review - This is the least conversion that makes native arithmetic work, which is why it is a separate function from ArrayMaterialize rather than a guarded call to it: materializing unconditionally would densify every SparseArray at the point where a consumer only wanted to be able to call Dot. Lazy and symbolic containers pass through rather than materializing, so a consumer that wants a value must bind parameters first. -->
+<!-- #| annotation: 27.07.26: Design review - This is the least conversion that makes native arithmetic work, which is why it is a separate function from ArrayMaterialize rather than a guarded call to it: materializing unconditionally would densify every SparseArray at the point where a consumer only wanted to be able to call Dot. A lazy container does materialize, since its per-scalar expansion computes; a caller holding one is usually better off binding parameters with ArrayReplaceAll, which evaluates the whole array once. -->
 
 A [SparseArray]() computes natively and is returned unchanged, sparsity intact:
 
@@ -92,19 +93,29 @@ ArrayComputable[ArrayObject[NumericArray[{1, 2, 3}, "Integer64"]]]
 
 <!-- => {1, 2, 3} -->
 
-## Possible Issues
+---
 
-A lazy container is returned unchanged, because it has no computable form until its parameters are bound:
+A lazy container materializes to its per-scalar expansion, which is an ordinary array of expressions:
 
 ```wl
 ArrayComputable[Function[{t}, {t, 2 t}]]
 ```
 
-<!-- => Function[{t}, {t, 2 t}] -->
+<!-- => {Function[{t}, t], Function[{t}, 2 t]} -->
+
+## Possible Issues
+
+Materializing a lazy container expands it element by element; a caller that intends to bind the parameters anyway should use [ArrayReplaceAll]() instead, which evaluates the underlying function once for the whole array:
+
+```wl
+ArrayReplaceAll[Function[{t}, {t, 2 t}], {t -> 3}]
+```
+
+<!-- => {3, 6} -->
 
 ---
 
-A symbolic container is likewise returned unchanged; there are no elements to compute with:
+A symbolic container is returned unchanged; there are no elements to compute with:
 
 ```wl
 ArrayComputable[MatrixSymbol["M", {2, 3}]]

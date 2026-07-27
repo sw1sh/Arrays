@@ -345,12 +345,20 @@ VerificationTest[
     TestID -> "Computable-NumericArray-then-Dot"
 ]
 
-(* Lazy and symbolic containers have no computable form short of binding their
-   parameters, so they pass through rather than materializing. *)
+(* A lazy container materializes to its per-scalar expansion, which computes;
+   ArrayComputable and ArrayMaterialize agree on the whole lazy tier. *)
 VerificationTest[
-    Map[ArrayComputable[#] === # &, {$pfLazy, $fn, $pw}],
+    Map[ArrayComputable[#] === ArrayMaterialize[#] &, {$pfLazy, $fn, $pw}],
     {True, True, True},
-    TestID -> "Computable-lazy-unchanged"
+    TestID -> "Computable-lazy-materializes"
+]
+
+(* Binding the parameters instead evaluates the underlying function once for
+   the whole array, which is what a caller that wants values should do. *)
+VerificationTest[
+    ArrayReplaceAll[$fn, {fnT -> 0.5}] === ArrayReplaceAll[ArrayComputable[$fn], {fnT -> 0.5}],
+    True,
+    TestID -> "Computable-lazy-agrees-with-substitution"
 ]
 
 VerificationTest[

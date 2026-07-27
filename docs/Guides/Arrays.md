@@ -75,3 +75,5 @@ The Arrays paclet treats the many array representations of the Wolfram Language 
 ## Tech Notes
 
 - [Array Containers](paclet:Wolfram/Arrays/tutorial/ArrayContainers)
+- [Net-Backed Arrays](paclet:Wolfram/Arrays/tutorial/NetBackedArrays)
+- [GPU-Backed Arrays](paclet:Wolfram/Arrays/tutorial/GPUBackedArrays)

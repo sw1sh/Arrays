@@ -30,13 +30,13 @@ PackageScope[deferredTreeQ]
 
 ArrayContainerQ::usage = "ArrayContainerQ[a] gives True if a is a supported array container of any tier: explicit, lazy parametric, or symbolic."
 
-ArrayExplicitQ::usage = "ArrayExplicitQ[a] gives True if a is an explicit array container: SparseArray, packed or plain List array, NumericArray, a structured array such as SymmetrizedArray, or a shape-introspectable wrapper container: QuantityArray, TabularColumn, Tabular, Dataset, ByteArray, EventSeries, or a DataStructure array store (\"DynamicArray\" or \"FixedArray\")."
+ArrayExplicitQ::usage = "ArrayExplicitQ[a] gives True if a is an explicit array container: SparseArray, packed or plain List array, NumericArray, GPUArray, a structured array such as SymmetrizedArray, or a shape-introspectable wrapper container: QuantityArray, TabularColumn, Tabular, Dataset, ByteArray, EventSeries, or a DataStructure array store (\"DynamicArray\" or \"FixedArray\")."
 
 ArrayLazyQ::usage = "ArrayLazyQ[a] gives True if a is a lazy parametric array container: an inert array-valued expression whose head is registered in the lazy tier. The registered heads are an array-valued InterpolatingFunction applied to at least one non-numeric argument, a fully applied array-valued ParametricFunction pf[params][t] with at least one non-numeric argument, an unapplied array-valued Function whose shape an ArrayDeclareShape declaration, a formal-symbol probe or a numeric probe settles, an array-valued Piecewise whose branch values and default are arrays of one shape, and a source NetGraph or NetChain - one with no open input ports, whose output port reports a positive integer dimension list and whose value is net[]. Exact numeric arguments such as Pi or 1/2 evaluate an applied form, so only non-numeric arguments stay lazy. Recognizing an unapplied Function EVALUATES it: with no declared shape its body is run at formal symbols and, failing that, at a random point in {0, 1}, so a Function with side effects or an expensive body should be given a shape with ArrayDeclareShape, which is consulted first and skips both probes."
 
 ArraySymbolicQ::usage = "ArraySymbolicQ[a] gives True if a is a symbolic array container: VectorSymbol, MatrixSymbol, ArraySymbol, an atomic symbol registered in $Assumptions as an element of Vectors, Matrices or Arrays, or a structural tree whose nodes are Inactive[D], Transpose, Inactive[TensorProduct], Plus, TensorContract, ArrayContract, Dot, ArrayDot or ArrayReshape and whose operands are either at least one symbolic container or all explicit containers, the deferred form a tensor-network contraction returns unactivated. Recognizing a structural tree never probes the lazy tier, so it cannot evaluate a Function leaf."
 
-ArrayComputeNativeQ::usage = "ArrayComputeNativeQ[a] gives True if an explicit array container computes natively without materializing: SparseArray, packed or plain List arrays, QuantityArray and TabularColumn; storage-only containers (NumericArray, structured arrays such as SymmetrizedArray, Tabular, Dataset, ByteArray, EventSeries, DataStructure stores) give False, as do lazy and symbolic containers."
+ArrayComputeNativeQ::usage = "ArrayComputeNativeQ[a] gives True if an explicit array container computes natively without materializing: SparseArray, packed or plain List arrays, QuantityArray, TabularColumn and GPUArray, whose arithmetic and Dot run on the device; storage-only containers (NumericArray, structured arrays such as SymmetrizedArray, Tabular, Dataset, ByteArray, EventSeries, DataStructure stores) give False, as do lazy and symbolic containers."
 
 
 (* Explicit tier: SparseArray, packed and plain List arrays, and structured
@@ -79,6 +79,12 @@ opaqueWrapperQ[a_] := wrapperExplicitQ[a]
 
 ArrayExplicitQ[_NumericArray] := True
 
+(* GPUArray is recognized through GPUArrayQ rather than by head: a malformed
+   call stays inert with head GPUArray and is not a container.  The head test
+   comes first so that GPUArrayQ, which initializes the GPU on its first real
+   call, is never reached by an ordinary array. *)
+ArrayExplicitQ[a_GPUArray] := GPUArrayQ[a]
+
 ArrayExplicitQ[a : _QuantityArray | _TabularColumn | _Tabular | _Dataset | _ByteArray | _EventSeries | _DataStructure] := wrapperExplicitQ[a]
 
 ArrayExplicitQ[a_] := ArrayQ[a]
@@ -101,6 +107,11 @@ ArrayComputeNativeQ[a_List] := ArrayQ[a]
 ArrayComputeNativeQ[_QuantityArray] := True
 
 ArrayComputeNativeQ[_TabularColumn] := True
+
+(* A GPUArray runs elementwise arithmetic and Dot on the device and hands back
+   a GPUArray, so it computes natively; what it does not preserve is precision,
+   which ArrayElementType reports and the reference page documents. *)
+ArrayComputeNativeQ[a_GPUArray] := GPUArrayQ[a]
 
 ArrayComputeNativeQ[___] := False
 

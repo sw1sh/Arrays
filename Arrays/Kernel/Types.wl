@@ -20,7 +20,7 @@ ArrayTier::usage = "ArrayTier[a] gives the tier of an array container: \"Explici
 
 ArrayElementDomain::usage = "ArrayElementDomain[a] gives the element domain of an array container, one of Integers, Rationals, Algebraics, Reals or Complexes, ordered Integers < Rationals < Algebraics < Reals < Complexes. A numeric container type maps into the same lattice (\"Integer64\" and \"UnsignedInteger8\" give Integers, \"Real32\" gives Reals, \"ComplexReal64\" gives Complexes), the exact entries of a List or SparseArray are inferred from the values, a symbolic container gives its declared domain, defaulting to Complexes as Vectors, Matrices and Arrays do, and a structural tree gives the join of its operands. A container whose domain is not known, including every lazy container, gives Missing[\"NotApplicable\"], which contributes nothing to a join rather than making it unknown."
 
-ArrayElementType::usage = "ArrayElementType[a] gives the concrete element type of an array container that carries one, as NumericArray and TabularColumn do (\"Real64\", \"Integer32\", ...); every other container gives Missing[\"NotApplicable\"] and describes its elements through ArrayElementDomain instead."
+ArrayElementType::usage = "ArrayElementType[a] gives the concrete element type of an array container that carries one, as NumericArray, GPUArray and TabularColumn do (\"Real64\", \"Integer32\", ...); every other container gives Missing[\"NotApplicable\"] and describes its elements through ArrayElementDomain instead."
 
 ArrayUnify::usage = "ArrayUnify[{a1, a2, ...}] gives an Association describing the common representation of the given array containers: \"Tier\" is the joined tier, \"Domain\" the joined element domain, \"ElementType\" the concrete numeric type of the join where it has one, and \"Arrays\" the operands coerced to the joined tier. Widening the domain never narrows the precision, so an \"Integer64\" operand joined with a \"Real32\" one gives \"Real64\"; a symbolic operand absorbs, since narrowing it to a machine type would mean materializing it; and an operand whose domain is unknown contributes nothing to the join. An operand with no lift to the joined tier is returned unchanged, which is the lazy operand of a symbolic join: it is already a legal leaf of a symbolic tree, and materializing it is the downward move the tier join forbids."
 
@@ -223,6 +223,10 @@ valuesSpec[a_] := Which[
 
 arrayElementSpec[a_NumericArray] := numericTypeSpec[NumericArrayType[a]]
 
+(* A GPUArray reports the device buffer's format, which is one of the same
+   numeric type names, so it shares the NumericArray spec table. *)
+arrayElementSpec[a_GPUArray] := If[GPUArrayQ[a], numericTypeSpec[a["ElementType"]], Missing["NotApplicable"]]
+
 arrayElementSpec[a_TabularColumn] := columnTypeSpec[a["ElementType"]]
 
 arrayElementSpec[a_EventSeries] := columnTypeSpec[a["Values"]["ElementType"]]
@@ -269,6 +273,8 @@ ArrayElementDomain[a_] := elementSpecDomain[arrayElementSpec[a]]
 
 
 ArrayElementType[a_NumericArray] := NumericArrayType[a]
+
+ArrayElementType[a_GPUArray] := If[GPUArrayQ[a], a["ElementType"], Missing["NotApplicable"]]
 
 ArrayElementType[a_TabularColumn] := a["ElementType"]
 

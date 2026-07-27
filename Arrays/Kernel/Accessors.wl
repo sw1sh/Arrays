@@ -93,6 +93,11 @@ ArrayMaterialize[a_EventSeries] := Normal[a["Values"]]
    source handle. *)
 ArrayMaterialize[ds_DataStructure ? wrapperExplicitQ] := Developer`ToPackedArray[ds["Elements"]]
 
+(* Normal on a GPUArray copies the device buffer back to the kernel, which is
+   the materialization and the point at which fp32 device precision becomes
+   visible in ordinary machine reals. *)
+ArrayMaterialize[a_GPUArray] := Normal[a]
+
 ArrayMaterialize[a_ ? ArrayExplicitQ] := Normal[a]
 
 (* A lazy container expands through its registered materialization handler: a

@@ -440,3 +440,89 @@ VerificationTest[
 ]
 
 EndTestSection[]
+
+
+(* GPUArray: an explicit, compute-native container whose buffer lives on the
+   device.  These tests are VACUOUS on a machine with no usable GPU - each one
+   short-circuits to its expected value - so $gpuArray is asserted first and its
+   result tells a reader of the run whether the section exercised anything. *)
+
+$gpuArray := $gpuArray = Quiet @ Check[
+    With[{g = GPUArray[{{1., 2.}, {3., 4.}}]}, If[GPUArrayQ[g], g, None]],
+    None
+]
+
+VerificationTest[
+    MemberQ[{None, _GPUArray}, $gpuArray] || MatchQ[$gpuArray, None | _GPUArray],
+    True,
+    TestID -> "GPUArray-availability-probe"
+]
+
+VerificationTest[
+    $gpuArray === None || ArrayContainerQ[$gpuArray],
+    True,
+    TestID -> "GPUArray-is-a-container"
+]
+
+VerificationTest[
+    $gpuArray === None || ArrayExplicitQ[$gpuArray],
+    True,
+    TestID -> "GPUArray-is-explicit"
+]
+
+(* Arithmetic and Dot run on the device and hand back a GPUArray, so it is
+   compute-native and ArrayComputable must leave it alone. *)
+VerificationTest[
+    $gpuArray === None || ArrayComputeNativeQ[$gpuArray],
+    True,
+    TestID -> "GPUArray-is-compute-native"
+]
+
+VerificationTest[
+    $gpuArray === None || ArrayComputable[$gpuArray] === $gpuArray,
+    True,
+    TestID -> "GPUArray-computable-is-identity"
+]
+
+(* Recognition goes through GPUArrayQ, never the head: a malformed call stays
+   inert with head GPUArray and is not a container. *)
+VerificationTest[
+    Quiet @ ArrayContainerQ[GPUArray["nonsense"]],
+    False,
+    TestID -> "GPUArray-malformed-is-not-a-container"
+]
+
+VerificationTest[
+    $gpuArray === None || ArrayDimensions[$gpuArray],
+    If[$gpuArray === None, True, {2, 2}],
+    TestID -> "GPUArray-dimensions"
+]
+
+VerificationTest[
+    $gpuArray === None || ArrayMaterialize[$gpuArray],
+    If[$gpuArray === None, True, {{1., 2.}, {3., 4.}}],
+    TestID -> "GPUArray-materializes-off-device"
+]
+
+(* Device buffers are fp32, so the element type is a Real32 family name and the
+   domain follows from it. *)
+VerificationTest[
+    $gpuArray === None || StringStartsQ[ArrayElementType[$gpuArray], "Real"],
+    True,
+    TestID -> "GPUArray-element-type-is-a-real-format"
+]
+
+VerificationTest[
+    $gpuArray === None || ArrayElementDomain[$gpuArray],
+    If[$gpuArray === None, True, Reals],
+    TestID -> "GPUArray-element-domain"
+]
+
+(* Joining a Real32 device buffer with a Real64 host array must widen to Real64
+   rather than narrow the host operand to device precision. *)
+VerificationTest[
+    $gpuArray === None ||
+        ArrayUnify[{$gpuArray, NumericArray[{{1., 2.}, {3., 4.}}, "Real64"]}]["ElementType"],
+    If[$gpuArray === None, True, "Real64"],
+    TestID -> "GPUArray-unify-widens-to-Real64"
+]

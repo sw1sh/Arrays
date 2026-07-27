@@ -30,7 +30,7 @@ ArrayRank::usage = "ArrayRank[a] gives the number of dimensions of an array cont
 
 ZeroArrayQ::usage = "ZeroArrayQ[a] gives True if any dimension of a is 0."
 
-ArrayNumericQ::usage = "ArrayNumericQ[a] gives True if all elements of an explicit array container are numeric; for a SparseArray only the explicit values are tested; packed arrays and NumericArrays are True by construction; lazy and symbolic containers give False."
+ArrayNumericQ::usage = "ArrayNumericQ[a] gives True if all elements of an explicit array container are numeric; for a SparseArray only the explicit values are tested; packed arrays, NumericArrays and GPUArrays are True by construction; lazy and symbolic containers give False."
 
 ArrayNumberQ::usage = "ArrayNumberQ[a] gives True if all elements of an explicit array container are inexact numbers (InexactNumberQ); for a SparseArray only the explicit values are tested; Real and Complex packed arrays and NumericArrays are True by construction, Integer ones give False; lazy and symbolic containers give False."
 
@@ -95,6 +95,10 @@ ArrayDimensions[a_List] := With[{dims = Dimensions[a]},
 
 (* TensorDimensions does not handle NumericArray *)
 ArrayDimensions[a_NumericArray] := Dimensions[a]
+
+(* Dimensions on a GPUArray reads the device buffer's shape without copying it
+   back to the kernel. *)
+ArrayDimensions[a_GPUArray] := If[GPUArrayQ[a], Dimensions[a], {}]
 
 (* Wrapper containers introspect their shape without materializing. *)
 
@@ -294,6 +298,9 @@ ArrayNumericQ[a_SparseArray] := VectorQ[a["ExplicitValues"], NumericQ]
 
 ArrayNumericQ[_NumericArray] := True
 
+(* A GPUArray holds a numeric device buffer by construction. *)
+ArrayNumericQ[a_GPUArray] := GPUArrayQ[a]
+
 ArrayNumericQ[a_List] := Developer`PackedArrayQ[a] || ArrayQ[a, _, NumericQ]
 
 (* QuantityArray magnitudes are numeric by construction: numeric-with-units. *)
@@ -336,6 +343,9 @@ ArrayNumericQ[___] := False
 ArrayNumberQ[a_SparseArray] := VectorQ[a["ExplicitValues"], InexactNumberQ]
 
 ArrayNumberQ[a_NumericArray] := StringStartsQ[NumericArrayType[a], "Real" | "Complex"]
+
+(* GPU element types are Real and Complex machine formats, never exact. *)
+ArrayNumberQ[a_GPUArray] := GPUArrayQ[a] && StringStartsQ[a["ElementType"], "Real" | "Complex"]
 
 ArrayNumberQ[a_List] := Developer`PackedArrayQ[a, Real] || Developer`PackedArrayQ[a, Complex] || ArrayQ[a, _, InexactNumberQ]
 

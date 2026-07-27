@@ -61,7 +61,7 @@ submission = FirstCase[result, _Success, Missing["NotFound"], Infinity]
 
 If[ MatchQ[submission, _Success],
     Print["submitted:"];
-    KeyValueMap[Print["  ", #1, ": ", #2] &, KeyDrop[First[submission], "Message"]],
+    KeyValueMap[Print["  ", #1, ": ", #2] &, KeyDrop[Last[submission], "Message"]],
     Print["SUBMISSION DID NOT SUCCEED:"];
     Print[result];
     Exit[1]

@@ -10,7 +10,7 @@ Keywords: [array container, sparse array, packed array, numeric array, symbolic 
 MainGuide: Documentation/English/Guides/Arrays.nb
 License: MIT
 WolframVersion: 14.1+
-Categories: [Core Language & Structure, Data Manipulation & Analysis]
+Categories: [Symbolic & Numeric Computation]
 SourceControlURL: https://github.com/sw1sh/Arrays
 ---
 

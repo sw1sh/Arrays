@@ -741,13 +741,14 @@ RegisterLazyHead[Piecewise, <|
    output port reports a type name rather than a dimension list and is declined
    too, for the same reason a rank-0 anything is not a container.
 
-   NO "Rebuild": a structural op would have to be lowered into layers, and
-   TransposeLayer is a documented trap there - PermutationList without an
-   explicit length truncates a permutation that fixes trailing levels, so a
-   permutation built from it is silently partial.  Omitting the key is how a
-   head says it has none, and the structural ops then materialize-then-operate,
-   which is the sound default.  Nothing else in the paclet needs an edit: the
-   registry is the single point where a head is admitted. *)
+   A NetArrayLayer is admitted on exactly the same terms: it takes no input,
+   its output port carries its shape, and it evaluates with layer[].
+
+   The rebuild wires the operation into the net as a FunctionLayer rather than
+   lowering it to a specific layer head, so one clause covers every structural
+   op the net framework can compile and declines the rest.  An operation
+   FunctionLayer cannot compile, or one whose wired net stops reporting a
+   shape, gives Missing and the caller materializes instead. *)
 
 netOutputDimensions[net_] := Replace[
     Quiet[Check[NetExtract[net, "Output"], $Failed]],
@@ -756,29 +757,50 @@ netOutputDimensions[net_] := Replace[
 
 netSourceQ[net_] := Quiet[Check[Length[Information[net, "InputPorts"]] === 0, False]]
 
-netContainerQ[net : _NetGraph | _NetChain] := netSourceQ[net] && MatchQ[netOutputDimensions[net], {__Integer ? Positive}]
+$netHeads = _NetGraph | _NetChain | _NetArrayLayer
+
+netContainerQ[net : $netHeads] := netSourceQ[net] && MatchQ[netOutputDimensions[net], {__Integer ? Positive}]
 
 netContainerQ[_] := False
 
 
-netDimensions[net : _NetGraph | _NetChain] := netOutputDimensions[net]
+netDimensions[net : $netHeads] := netOutputDimensions[net]
 
 netDimensions[_] := {}
 
 
-netMaterialize[net : _NetGraph | _NetChain] := net[]
+netMaterialize[net : $netHeads] := net[]
 
 netMaterialize[expr_] := indexedMaterialize[expr]
 
 
-RegisterLazyHead[NetGraph, <|
-    "ContainerQ" -> netContainerQ,
-    "Dimensions" -> netDimensions,
-    "Materialize" -> netMaterialize
-|>]
+(* The operation becomes a layer and the net becomes its source, so the result
+   is a net of the same kind rather than an array.  FunctionLayer decides what
+   is expressible: it refuses to compile Conjugate, for instance, and the
+   refusal surfaces here as Missing rather than as a broken net. *)
 
-RegisterLazyHead[NetChain, <|
+netRebuild[g_, net : $netHeads] := Module[{layer, wired},
+    layer = Quiet @ Check[FunctionLayer[g], $Failed];
+    If[layer === $Failed, Return[Missing["NotRebuildable"]]];
+    wired = Quiet @ Check[
+        NetGraph[<|"source" -> net, "operation" -> layer|>, {"source" -> "operation" -> NetPort["Output"]}],
+        $Failed
+    ];
+    If[netContainerQ[wired], wired, Missing["NotRebuildable"]]
+]
+
+netRebuild[_, _] := Missing["NotRebuildable"]
+
+
+$netHandlers = <|
     "ContainerQ" -> netContainerQ,
     "Dimensions" -> netDimensions,
-    "Materialize" -> netMaterialize
-|>]
+    "Materialize" -> netMaterialize,
+    "Rebuild" -> netRebuild
+|>
+
+RegisterLazyHead[NetGraph, $netHandlers]
+
+RegisterLazyHead[NetChain, $netHandlers]
+
+RegisterLazyHead[NetArrayLayer, $netHandlers]

@@ -7,7 +7,7 @@ PacletObject[
     "Creator" -> "Nikolay Murzin",
     "License" -> "MIT",
     "PublisherID" -> "Wolfram",
-    "Version" -> "1.1.4",
+    "Version" -> "1.2.1",
     "WolframVersion" -> "14.1+",
     "PrimaryContext" -> "Wolfram`Arrays`",
     "Extensions" -> {

@@ -406,18 +406,19 @@ VerificationTest[
     TestID -> "Lazy-NetGraph-shape-does-not-evaluate-the-net"
 ]
 
-(* The structural ops have no lazy-preserving rebuild for a net - a TransposeLayer
-   built from a truncated permutation is the documented trap - so they
-   materialize-then-operate, and the reference is exactly that. *)
+(* A structural op the net framework can compile rebuilds and stays a net, and
+   its value is the one the materialize-then-operate route would have given.
+   Ops it cannot compile fall back to that route, which ArrayConjugate and
+   ArrayPart still take. *)
 VerificationTest[
     {
-        ArrayTranspose[$netSource, {2, 1}] === Transpose[ArrayMaterialize[$netSource]],
+        ArrayMaterialize[ArrayTranspose[$netSource, {2, 1}]] === Transpose[ArrayMaterialize[$netSource]],
+        ArrayMaterialize[ArrayVector[$netSource]] === Flatten[ArrayMaterialize[$netSource]],
         ArrayPart[$netSource, {2}] === Part[ArrayMaterialize[$netSource], 2],
-        ArrayConjugate[$netSource] === Conjugate[ArrayMaterialize[$netSource]],
-        ArrayVector[$netSource] === Flatten[ArrayMaterialize[$netSource]]
+        ArrayConjugate[$netSource] === Conjugate[ArrayMaterialize[$netSource]]
     },
     {True, True, True, True},
-    TestID -> "Lazy-NetGraph-structural-ops-materialize-then-operate"
+    TestID -> "Lazy-NetGraph-structural-ops-agree-with-materialized-route"
 ]
 
 (* RECOGNITION MUST NOT RUN USER CODE.  ArrayLazyQ on an unapplied Function
@@ -525,4 +526,100 @@ VerificationTest[
         ArrayUnify[{$gpuArray, NumericArray[{{1., 2.}, {3., 4.}}, "Real64"]}]["ElementType"],
     If[$gpuArray === None, True, "Real64"],
     TestID -> "GPUArray-unify-widens-to-Real64"
+]
+
+
+(* Nets: a source NetGraph, NetChain or NetArrayLayer is a lazy container, and
+   a structural operation on one wires the operation in as a layer and gives
+   back a net rather than materializing it. *)
+
+$netLayer := NetArrayLayer["Array" -> {{1., 2., 3.}, {4., 5., 6.}}]
+
+$netSource := NetGraph[<|"a" -> $netLayer|>, {"a" -> NetPort["Output"]}]
+
+(* A bare NetArrayLayer takes no input, carries its shape on its output port and
+   evaluates with layer[], which is the whole admission criterion. *)
+VerificationTest[
+    ArrayContainerQ[$netLayer],
+    True,
+    TestID -> "Net-NetArrayLayer-is-a-container"
+]
+
+VerificationTest[
+    ArrayDimensions[$netLayer],
+    {2, 3},
+    TestID -> "Net-NetArrayLayer-shape"
+]
+
+VerificationTest[
+    ArrayMaterialize[$netLayer],
+    {{1., 2., 3.}, {4., 5., 6.}},
+    TestID -> "Net-NetArrayLayer-materializes"
+]
+
+VerificationTest[
+    ArrayTier[$netSource],
+    "Lazy",
+    TestID -> "Net-source-net-is-lazy"
+]
+
+(* Structural operations rebuild rather than materialize: the result is a net,
+   and asking it for its shape does not run it. *)
+VerificationTest[
+    Head[ArrayTranspose[$netSource, {2, 1}]],
+    NetGraph,
+    TestID -> "Net-transpose-gives-a-net"
+]
+
+VerificationTest[
+    ArrayDimensions[ArrayTranspose[$netSource, {2, 1}]],
+    {3, 2},
+    TestID -> "Net-transpose-shape-without-running"
+]
+
+VerificationTest[
+    ArrayMaterialize[ArrayTranspose[$netSource, {2, 1}]],
+    {{1., 4.}, {2., 5.}, {3., 6.}},
+    TestID -> "Net-transpose-value"
+]
+
+VerificationTest[
+    Head[ArrayVector[$netSource]],
+    NetGraph,
+    TestID -> "Net-flatten-gives-a-net"
+]
+
+VerificationTest[
+    ArrayMaterialize[ArrayVector[$netSource]],
+    {1., 2., 3., 4., 5., 6.},
+    TestID -> "Net-flatten-value"
+]
+
+VerificationTest[
+    ArrayMaterialize[ReshapeArray[$netSource, {3, 2}]],
+    {{1., 2.}, {3., 4.}, {5., 6.}},
+    TestID -> "Net-reshape-value"
+]
+
+(* A bare layer rebuilds the same way, so the layer and the net wrapping it
+   behave alike under structural operations. *)
+VerificationTest[
+    ArrayMaterialize[ArrayTranspose[$netLayer, {2, 1}]],
+    {{1., 4.}, {2., 5.}, {3., 6.}},
+    TestID -> "Net-bare-layer-transposes"
+]
+
+(* An operation the net framework cannot compile declines to a materialized
+   result rather than producing a broken net. *)
+VerificationTest[
+    Head[ArrayConjugate[$netSource]],
+    List,
+    TestID -> "Net-uncompilable-op-materializes"
+]
+
+(* A net with an open input port has no array value and stays out. *)
+VerificationTest[
+    ArrayContainerQ[NetGraph[<|"a" -> ElementwiseLayer[Sin, "Input" -> 3]|>, {"a" -> NetPort["Output"]}]],
+    False,
+    TestID -> "Net-open-input-declined"
 ]

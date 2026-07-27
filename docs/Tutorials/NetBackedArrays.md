@@ -148,29 +148,110 @@ ArrayMaterialize[chain]
 
 <!-- => {{1., 2., 3.}, {4., 5., 6.}} -->
 
-## Structural Operations
+## A Bare NetArrayLayer Is a Container Too
 
-Nets register no structural rebuild, so a structural operation materializes the net and operates on the resulting array. Transposition gives the transposed array rather than a rewired net:
+A [NetArrayLayer]() holding an array takes no input, carries its shape on its
+output port and evaluates with `layer[]`, which is the whole admission
+criterion, so it needs no wrapping net to be a container:
 
 ```wl
-ArrayTranspose[net, {2, 1}]
+layer = NetArrayLayer["Array" -> {{1., 2., 3.}, {4., 5., 6.}}]
+```
+
+<!-- => the NetArrayLayer summary box, output port {2, 3} -->
+
+---
+
+```wl
+ArrayDimensions[layer]
+```
+
+<!-- => {2, 3} -->
+
+---
+
+```wl
+ArrayMaterialize[layer]
+```
+
+<!-- => {{1., 2., 3.}, {4., 5., 6.}} -->
+
+---
+
+It rebuilds under structural operations exactly as a wrapping net does:
+
+```wl
+ArrayMaterialize[ArrayTranspose[layer, {2, 1}]]
+```
+
+<!-- => {{1., 4.}, {2., 5.}, {3., 6.}} -->
+
+## Structural Operations Give Nets
+
+A structural operation wires itself into the net as a layer and gives back a
+net, so the result is still a container and the net has still not been run.
+Transposition gives a rewired net, not an array:
+
+```wl
+transposed = ArrayTranspose[net, {2, 1}]
+```
+
+<!-- => the NetGraph summary box, output port {3, 2} -->
+
+---
+
+Its shape follows from the operation, read off the new output port:
+
+```wl
+ArrayDimensions[transposed]
+```
+
+<!-- => {3, 2} -->
+
+---
+
+Running it gives the transposed array:
+
+```wl
+ArrayMaterialize[transposed]
 ```
 
 <!-- => {{1., 4.}, {2., 5.}, {3., 6.}} -->
 
 ---
 
-Taking a row gives the row:
+Flattening to a vector is another rewiring:
 
 ```wl
-ArrayPart[net, {1}]
+ArrayMaterialize[ArrayVector[net]]
 ```
 
-<!-- => {1., 2., 3.} -->
+<!-- => {1., 2., 3., 4., 5., 6.} -->
 
 ---
 
-Taking a single element gives the scalar:
+So is reshaping:
+
+```wl
+ArrayMaterialize[ReshapeArray[net, {3, 2}]]
+```
+
+<!-- => {{1., 2.}, {3., 4.}, {5., 6.}} -->
+
+---
+
+Operations compose without ever running the net, so a chain of them is one net
+evaluated once at the end:
+
+```wl
+ArrayMaterialize[ArrayVector[ArrayTranspose[net, {2, 1}]]]
+```
+
+<!-- => {1., 4., 2., 5., 3., 6.} -->
+
+---
+
+Taking a part reads an element, which is a value rather than a rewiring:
 
 ```wl
 ArrayPart[net, {2, 3}]
@@ -187,16 +268,6 @@ ArrayContract[net, {{1, 2}}]
 ```
 
 <!-- => 6. -->
-
----
-
-Flattening to a vector materializes and flattens:
-
-```wl
-ArrayVector[net]
-```
-
-<!-- => {1., 2., 3., 4., 5., 6.} -->
 
 ## Contracting a Tensor Network to a Net
 
@@ -255,7 +326,8 @@ ArrayMaterialize[TensorNetworkToNetGraph[g]]
 
 - Admission has two conditions: the net has no open input ports, and its output port reports a list of positive integer dimensions.
 - `"NetGraph"` is a valid `Method` value for [TensorNetworkContraction]() but is deliberately absent from `` Wolfram`TensorNetworks`$TensorNetworkContractionMethods ``, which lists the interchangeable methods that all return arrays.
-- Nets register a shape reader and a materializer but no rebuild, because lowering a structural operation into layers would have to encode index permutations as layers, so every structural operation materializes first.
+- The rebuild wires the operation in as a [FunctionLayer]() rather than lowering it to a specific layer head, so one mechanism covers every operation the net framework can compile.
+- An operation [FunctionLayer]() cannot compile, [Conjugate]() among them, is declined and the operation materializes instead, so a rebuild never produces a net that does the wrong thing.
 
 ## Possible Issues
 
@@ -308,6 +380,16 @@ TensorNetworkContraction[sc, {{1, 2}}, Method -> "NetGraph"][]
 ```
 
 <!-- => 10. -->
+
+---
+
+Conjugation has no compilable net form, so it materializes rather than rewiring:
+
+```wl
+ArrayConjugate[net]
+```
+
+<!-- => {{1., 2., 3.}, {4., 5., 6.}} -->
 
 ---
 

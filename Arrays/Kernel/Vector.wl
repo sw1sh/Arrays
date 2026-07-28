@@ -4,10 +4,9 @@ PackageExport[ArrayVector]
 PackageExport[ReshapeArray]
 PackageExport[PadArray]
 
+ArrayVector::usage ="ArrayVector[a] flattens an explicit array container to a vector, using a raw CSR construction for a SparseArray of rank above 11; a lazy container stays lazy where its head supplies a lazy-preserving rebuild and materializes through ArrayMaterialize where it does not, as for a ParametricFunction; a deferred structural tree stays deferred, gaining an Inactive[ArrayReshape] node rather than being computed; a leafless symbolic array such as a MatrixSymbol has no elements to restructure and is left unevaluated; a rank-1 container of any tier passes through unchanged, as does scalar numeric input."
 
-ArrayVector::usage = "ArrayVector[a] flattens an explicit array container to a vector, using a raw CSR construction for a SparseArray of rank above 11; a lazy container stays lazy where its head supplies a lazy-preserving rebuild and materializes through ArrayMaterialize where it does not, as for a ParametricFunction; a rank-1 container of any tier passes through unchanged, as does scalar numeric input."
-
-ReshapeArray::usage = "ReshapeArray[a, dims] reshapes an explicit array container to the given dimensions, preserving the container where ArrayReshape does; a lazy container stays lazy where its head supplies a lazy-preserving rebuild and materializes through ArrayMaterialize where it does not, as for a ParametricFunction.\nReshapeArray[a, dims, pad] pads with pad when the reshape needs more elements."
+ReshapeArray::usage = "ReshapeArray[a, dims] reshapes an explicit array container to the given dimensions, preserving the container where ArrayReshape does; a lazy container stays lazy where its head supplies a lazy-preserving rebuild and materializes through ArrayMaterialize where it does not, as for a ParametricFunction; a deferred structural tree stays deferred, gaining an Inactive[ArrayReshape] node rather than being computed; a leafless symbolic array is left unevaluated.\nReshapeArray[a, dims, pad] pads with pad when the reshape needs more elements."
 
 PadArray::usage = "PadArray[a, spec] pads an explicit array container with zeros according to spec, preserving the container where ArrayPad does; a NumericArray converts through Normal and re-wraps.\nPadArray[a, spec, padding] pads with the given padding."
 
@@ -54,6 +53,28 @@ ArrayVector[a_ ? ArrayExplicitQ] := Flatten[a]
    materialized one for no gain. *)
 ArrayVector[a_ ? ArrayLazyQ] := If[ArrayRank[a] == 1, a, lazyStructuralOp[Flatten, a]]
 
+(* Flattening a deferred structural tree is a reshape to rank 1, and
+   Inactive[ArrayReshape] is itself an admitted structural node
+   (Classification.wl), so the flatten is one more node on the tree rather than
+   a reason to compute it.  ArrayTranspose already works this way - its generic
+   clause leaves Transpose unevaluated on a symbolic operand - and this brings
+   the shape-only operations into line.
+
+   Materializing here instead would defeat the tier: the whole point of a
+   deferred tree is that its value is not computed until something actually
+   needs the numbers.
+
+   A leafless symbolic array is left alone: a MatrixSymbol has no elements to
+   restructure, so declining is the honest answer and the call stays
+   unevaluated, as it always did. *)
+ArrayVector[a_ ? deferredTreeQ] := If[ArrayRank[a] == 1, a,
+    Inactive[ArrayReshape][a, {Times @@ ArrayDimensions[a]}]
+]
+
+(* The rank-1 passthrough is promised for a container of any tier, so it holds
+   for a symbolic one too: a VectorSymbol is already a vector. *)
+ArrayVector[a_ ? ArraySymbolicQ] /; ArrayRank[a] == 1 := a
+
 
 (* === reshape and pad (non-colliding System equivalents) === *)
 
@@ -72,6 +93,12 @@ ReshapeArray[a_ ? ArrayLazyQ, dims : {___Integer ? NonNegative}] :=
 
 ReshapeArray[a_ ? ArrayLazyQ, dims : {___Integer ? NonNegative}, pad_] :=
     lazyStructuralOp[ArrayReshape[#, dims, pad] &, a]
+
+ReshapeArray[a_ ? deferredTreeQ, dims : {___Integer ? NonNegative}] :=
+    Inactive[ArrayReshape][a, dims]
+
+ReshapeArray[a_ ? deferredTreeQ, dims : {___Integer ? NonNegative}, pad_] :=
+    Inactive[ArrayReshape][a, dims, pad]
 
 
 (* ArrayPad does not support NumericArray, so it converts through Normal and

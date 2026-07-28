@@ -148,4 +148,64 @@ VerificationTest[
     TestID -> "Lazy-rank1-flatten-passthrough"
 ]
 
+
+(* Flattening a deferred structural tree is a reshape to rank 1, and
+   Inactive[ArrayReshape] is an admitted structural node, so the flatten is one
+   more node on the tree and the value is still not computed. Before this the
+   whole symbolic tier matched no clause and ArrayVector came back unevaluated
+   - and an unevaluated ArrayVector carrying an entire deferred contraction
+   reads downstream as a single element rather than as the array it stands
+   for. *)
+
+$deferred = Inactive[TensorProduct][SparseArray[{1., 2.}], SparseArray[{3., 4.}]]
+
+VerificationTest[
+    {ArraySymbolicQ[$deferred], ArrayDimensions[$deferred]},
+    {True, {2, 2}},
+    TestID -> "Deferred-tree-is-a-symbolic-container"
+]
+
+(* The flatten must NOT compute the tree: the result is still a deferred
+   container, and only ArrayMaterialize turns it into numbers. *)
+VerificationTest[
+    With[{flat = ArrayVector[$deferred]},
+        {ArraySymbolicQ[flat], ArrayExplicitQ[flat], ArrayDimensions[flat], Normal @ ArrayMaterialize[flat]}
+    ],
+    {True, False, {4}, {3., 4., 6., 8.}},
+    TestID -> "Deferred-tree-flatten-stays-deferred"
+]
+
+VerificationTest[
+    With[{r = ReshapeArray[$deferred, {4}]},
+        {ArraySymbolicQ[r], ArrayExplicitQ[r], ArrayDimensions[r], Normal @ ArrayMaterialize[r]}
+    ],
+    {True, False, {4}, {3., 4., 6., 8.}},
+    TestID -> "Deferred-tree-reshape-stays-deferred"
+]
+
+(* A deferred flatten is itself a tree, so further shape-only operations keep
+   composing onto it without computing anything. *)
+VerificationTest[
+    With[{t = ArrayTranspose[ReshapeArray[$deferred, {4, 1}], Cycles[{{1, 2}}]]},
+        {ArraySymbolicQ[t], ArrayDimensions[t], Normal @ ArrayMaterialize[t]}
+    ],
+    {True, {1, 4}, {{3., 4., 6., 8.}}},
+    TestID -> "Deferred-shape-only-operations-compose"
+]
+
+(* A leafless symbolic array has no elements to restructure, so declining is
+   the honest answer and the operation stays unevaluated as before. *)
+VerificationTest[
+    {Head @ ArrayVector[MatrixSymbol["M", {2, 3}]], Head @ ReshapeArray[MatrixSymbol["M", {2, 3}], {6}]},
+    {ArrayVector, ReshapeArray},
+    TestID -> "Leafless-symbolic-array-declines-to-restructure"
+]
+
+(* The rank-1 passthrough is promised for a container of any tier. *)
+VerificationTest[
+    ArrayVector[VectorSymbol["v", 3]] === VectorSymbol["v", 3],
+    True,
+    TestID -> "Symbolic-rank1-flatten-passthrough"
+]
+
 EndTestSection[]

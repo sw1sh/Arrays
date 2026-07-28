@@ -57,6 +57,14 @@ ArrayComputeNativeQ::usage = "ArrayComputeNativeQ[a] gives True if an explicit a
 
 wrapperExplicitQ[_QuantityArray | _TabularColumn | _Dataset | _EventSeries] := True
 
+(* The Symbolic*Array family satisfies the wrapper criterion exactly: the shape
+   reads off the head's arguments and Normal materializes, but none of
+   ArrayReshape, ArrayPad or Transpose evaluates on one, so every structural
+   operation has to go through the materialized data - which is what being a
+   wrapper here means.  See the ArrayExplicitQ clause below for why they are an
+   explicit container rather than a symbolic one. *)
+wrapperExplicitQ[_SymbolicIdentityArray | _SymbolicDeltaProductArray | _SymbolicZerosArray | _SymbolicOnesArray] := True
+
 wrapperExplicitQ[a_Tabular] := TabularQ[a]
 
 wrapperExplicitQ[a_ByteArray] := ByteArrayQ[a]
@@ -79,6 +87,23 @@ opaqueWrapperQ[a_] := wrapperExplicitQ[a]
 
 
 ArrayExplicitQ[_NumericArray] := True
+
+(* The Symbolic*Array family - SymbolicIdentityArray, SymbolicDeltaProductArray,
+   SymbolicZerosArray, SymbolicOnesArray - are symbolic REPRESENTATIONS of arrays
+   whose values are fully determined: an identity, a Kronecker delta product, all
+   zeros, all ones.  Both halves of the shape-based admission criterion hold -
+   the shape is introspectable without materializing and Normal materializes -
+   so they are explicit-tier containers.  "Symbolic" in their names is about how
+   they are STORED, not about unknown elements, so they do not belong to the
+   symbolic tier: a VectorSymbol stands for values that do not exist yet, and
+   these stand for values that do.
+
+   They are ArrayQ False and StructuredArrayQ False, so like NumericArray they
+   need a head clause; and being ArrayQ False they take the materialize-first
+   route in ArrayContract, which is correct, since TensorContract does not
+   evaluate on them either. *)
+
+ArrayExplicitQ[_SymbolicIdentityArray | _SymbolicDeltaProductArray | _SymbolicZerosArray | _SymbolicOnesArray] := True
 
 (* GPUArray is recognized through GPUArrayQ rather than by head: a malformed
    call stays inert with head GPUArray and is not a container.  The head test

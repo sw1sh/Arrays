@@ -586,4 +586,71 @@ VerificationTest[
     TestID -> "regression-materialize-still-activates-every-inactive-node-head"
 ]
 
+
+(* The Symbolic*Array family are symbolic REPRESENTATIONS of arrays whose values
+   are fully determined, so they are explicit-tier containers: "symbolic" is
+   about how they are stored, not about unknown elements. They were admitted by
+   no clause at all - ArrayQ and StructuredArrayQ are both False for them. *)
+
+$symId = SymbolicIdentityArray[{2, 2}]
+$symZeros = SymbolicZerosArray[{2, 3}]
+$symOnes = SymbolicOnesArray[{2, 3}]
+
+VerificationTest[
+    Map[{ArrayContainerQ[#], ArrayTier[#], ArrayDimensions[#] === Dimensions[Normal[#]]} &,
+        {$symId, $symZeros, $symOnes}],
+    ConstantArray[{True, "Explicit", True}, 3],
+    TestID -> "regression-symbolic-array-family-is-an-explicit-container"
+]
+
+(* Values are 0 and 1 by construction, so numeric and exact, and the domain is
+   known from the head without materializing. The generic explicit rung cannot
+   say so: it tests ArrayQ, which is False for these heads. *)
+VerificationTest[
+    {
+        ArrayNumericQ /@ {$symId, $symZeros, $symOnes},
+        ArrayNumberQ /@ {$symId, $symZeros, $symOnes},
+        ArrayAllZeroQ /@ {$symId, $symZeros, $symOnes},
+        ArrayElementDomain /@ {$symId, $symZeros, $symOnes}
+    },
+    {{True, True, True}, {False, False, False}, {False, True, False}, {Integers, Integers, Integers}},
+    TestID -> "regression-symbolic-array-family-element-metadata"
+]
+
+(* None of ArrayReshape, ArrayPad or Transpose evaluates on these heads, so every
+   structural operation goes through the materialized data - which is what being
+   a wrapper container means here. *)
+VerificationTest[
+    Map[
+        Function[a,
+            {
+                Normal[ArrayVector[a]] === Flatten[Normal[a]],
+                Normal[ReshapeArray[a, {Times @@ ArrayDimensions[a]}]] === Flatten[Normal[a]],
+                Normal[PadArray[a, 1]] === ArrayPad[Normal[a], 1],
+                Normal[ArrayTranspose[a, Reverse[Range[ArrayRank[a]]]]] ===
+                    Transpose[Normal[a], Reverse[Range[ArrayRank[a]]]]
+            }
+        ],
+        {$symId, $symZeros, $symOnes}
+    ],
+    ConstantArray[{True, True, True, True}, 3],
+    TestID -> "regression-symbolic-array-family-structural-operations"
+]
+
+(* Each operation is compared against the SAME operation on the materialized
+   container, never against a different one. *)
+VerificationTest[
+    With[{sa = SparseArray[{{1., 2.}, {3., 4.}}]},
+        {
+            Normal[ArrayContract[{$symId, sa}, {{2, 3}}]] == Normal[ArrayContract[{Normal[$symId], sa}, {{2, 3}}]],
+            Normal[ArrayContract[$symId, {{1, 2}}]] == Normal[ArrayContract[Normal[$symId], {{1, 2}}]],
+            Normal[ArrayMaterialize[Inactive[TensorProduct][$symId, sa]]] ==
+                Normal[ArrayMaterialize[Inactive[TensorProduct][Normal[$symId], sa]]],
+            ArrayUnify[{$symOnes, {{1., 2., 3.}, {4., 5., 6.}}}]["Domain"]
+        }
+    ],
+    {True, True, True, Reals},
+    TestID -> "regression-symbolic-array-family-contracts-and-joins"
+]
+
 EndTestSection[]

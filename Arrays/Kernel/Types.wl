@@ -262,6 +262,12 @@ arrayElementSpec[a_List] := valuesSpec[a]
 
 arrayElementSpec[a_ ? StructuredArray`StructuredArrayQ] := valuesSpec[Values[ArrayRules[a]]]
 
+(* The Symbolic*Array family holds only 0 and 1 by construction - an identity, a
+   Kronecker delta product, all zeros, all ones - so the domain is known from the
+   head alone and nothing has to be built to read it. *)
+
+arrayElementSpec[_SymbolicIdentityArray | _SymbolicDeltaProductArray | _SymbolicZerosArray | _SymbolicOnesArray] := {Integers, "Exact"}
+
 (* A Tabular answers per column, and the columns join: a mixed Integer64 and
    Real64 table is a real table, and a column of a non-numeric type contributes
    nothing, exactly as an unknown operand does not constrain a join. *)

@@ -368,6 +368,14 @@ ArrayNumericQ[a_EventSeries] := With[{values = a["Values"]},
 (* DataStructure stores are untyped, so the elements are inspected. *)
 ArrayNumericQ[ds_DataStructure] := wrapperExplicitQ[ds] && VectorQ[ds["Elements"], NumericQ]
 
+(* The Symbolic*Array family holds 0 and 1 by construction, so it is numeric and
+   exact from the head alone.  The generic explicit rung below cannot say so: it
+   tests ArrayQ, which is False for these heads, so they answered False while
+   ArrayAllZeroQ - which materializes - answered correctly, and the two
+   disagreed. ArrayNumberQ needs no clause: exact integers are not inexact
+   numbers, so the generic rung's False is already right. *)
+ArrayNumericQ[_SymbolicIdentityArray | _SymbolicDeltaProductArray | _SymbolicZerosArray | _SymbolicOnesArray] := True
+
 ArrayNumericQ[a_ ? ArrayExplicitQ] := ArrayQ[a, _, NumericQ]
 
 ArrayNumericQ[___] := False

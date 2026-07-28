@@ -8,7 +8,7 @@ ArrayVector::usage ="ArrayVector[a] flattens an explicit array container to a ve
 
 ReshapeArray::usage = "ReshapeArray[a, dims] reshapes an explicit array container to the given dimensions, preserving the container where ArrayReshape does; a lazy container stays lazy where its head supplies a lazy-preserving rebuild and materializes through ArrayMaterialize where it does not, as for a ParametricFunction; a deferred structural tree stays deferred, gaining an Inactive[ArrayReshape] node rather than being computed; a leafless symbolic array is left unevaluated.\nReshapeArray[a, dims, pad] pads with pad when the reshape needs more elements."
 
-PadArray::usage = "PadArray[a, spec] pads an explicit array container with zeros according to spec, preserving the container where ArrayPad does; a NumericArray converts through Normal and re-wraps.\nPadArray[a, spec, padding] pads with the given padding."
+PadArray::usage = "PadArray[a, spec] pads an explicit array container with zeros according to spec, preserving the container where ArrayPad does; a NumericArray converts through Normal and re-wraps; a lazy container stays lazy where its head supplies a lazy-preserving rebuild and materializes through ArrayMaterialize where it does not, as for a ParametricFunction.\nPadArray[a, spec, padding] pads with the given padding."
 
 
 (* === flatten to vector === *)
@@ -118,3 +118,13 @@ PadArray[a_ ? wrapperExplicitQ, spec_, padding_] := ArrayPad[ArrayMaterialize[a]
 PadArray[a_ ? ArrayExplicitQ, spec_] := ArrayPad[a, spec]
 
 PadArray[a_ ? ArrayExplicitQ, spec_, padding_] := ArrayPad[a, spec, padding]
+
+(* A lazy container pads the way it reshapes: through the head's
+   lazy-preserving rebuild where it has one, and through ArrayMaterialize where
+   it does not.  Without these clauses the lazy tier matched no definition at
+   all and PadArray came back unevaluated, which reads downstream as "not a
+   container" rather than as the padded array. *)
+
+PadArray[a_ ? ArrayLazyQ, spec_] := lazyStructuralOp[ArrayPad[#, spec] &, a]
+
+PadArray[a_ ? ArrayLazyQ, spec_, padding_] := lazyStructuralOp[ArrayPad[#, spec, padding] &, a]

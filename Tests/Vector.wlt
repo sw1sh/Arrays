@@ -193,6 +193,42 @@ VerificationTest[
     TestID -> "Deferred-shape-only-operations-compose"
 ]
 
+(* PadArray had clauses for the explicit tier only, so a lazy container matched
+   no definition and the call came back unevaluated - "not a container" rather
+   than the padded array. It pads the way it reshapes: through the head's
+   lazy-preserving rebuild where it has one, materializing where it does not. *)
+
+VerificationTest[
+    With[{p = PadArray[$pw, 1]},
+        {ArrayLazyQ[p], ArrayDimensions[p],
+            ArrayReplaceAll[p, zz -> -1] == ArrayPad[ArrayReplaceAll[$pw, zz -> -1], 1]}
+    ],
+    {True, {4, 4}, True},
+    TestID -> "Lazy-Piecewise-pad-stays-lazy"
+]
+
+(* A Function binds its parameter, so the substitution goes through
+   ArrayReplaceAll: a plain ReplaceAll would rewrite the binder itself. *)
+VerificationTest[
+    With[{p = PadArray[$fn, 1, 9.]},
+        {ArrayLazyQ[p], ArrayDimensions[p],
+            ArrayReplaceAll[p, fnT -> 0.3] == ArrayPad[ArrayReplaceAll[$fn, fnT -> 0.3], 1, 9.]}
+    ],
+    {True, {4, 4}, True},
+    TestID -> "Lazy-Function-pad-with-padding-stays-lazy"
+]
+
+(* A ParametricFunction declares no rebuild, so padding materializes and says
+   so by no longer being lazy; the values still agree. *)
+VerificationTest[
+    With[{p = PadArray[$pfLazyM, 1]},
+        {ArrayLazyQ[p], ArrayDimensions[p],
+            ArrayReplaceAll[p, {aa -> 1., tt -> 0.5}] == ArrayPad[ArrayReplaceAll[$pfLazyM, {aa -> 1., tt -> 0.5}], 1]}
+    ],
+    {False, {4, 4}, True},
+    TestID -> "Lazy-ParametricFunction-pad-materializes"
+]
+
 (* A leafless symbolic array has no elements to restructure, so declining is
    the honest answer and the operation stays unevaluated as before. *)
 VerificationTest[

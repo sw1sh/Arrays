@@ -214,6 +214,25 @@ structuralNodeOperands[HoldPattern[IgnoringInactive[ArrayDot[x_, y_, _]]]] := {x
 
 structuralNodeOperands[HoldPattern[IgnoringInactive[ArrayReshape[t_, _, ___]]]] := {t}
 
+(* This paclet's own shape-only operations, in the form they take when they
+   cannot run.  ArrayVector, ReshapeArray and PadArray leave an unevaluated
+   call when their operand is symbolic - there is nothing to restructure until
+   the operand has elements - and that call is a perfectly good array: it names
+   an operand and a shape change, so its shape follows from the operand's.
+
+   These differ from the Inactive nodes above in WHEN they defer.  An Inactive
+   node wraps an explicit operand and waits for Activate; one of these fires
+   the moment its operand becomes explicit, so it is only ever seen wrapping a
+   symbolic one.  That is why the Tests/Shape.wlt walk over $structuralNodes
+   cannot cover them - Activate does not compute them - and they are checked
+   there against the shape their evaluated counterpart has instead. *)
+
+structuralNodeOperands[HoldPattern[ArrayVector[t_]]] := {t}
+
+structuralNodeOperands[HoldPattern[ReshapeArray[t_, _, ___]]] := {t}
+
+structuralNodeOperands[HoldPattern[PadArray[t_, _, ___]]] := {t}
+
 structuralNodeOperands[___] := None
 
 

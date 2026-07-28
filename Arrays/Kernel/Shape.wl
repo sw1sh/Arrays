@@ -24,7 +24,7 @@ PackageScope[assumptionDomain]
 PackageScope[columnLeafType]
 
 
-ArrayDimensions::usage = "ArrayDimensions[a] gives the dimensions of an array container of any tier without materializing it, recursing structurally through Inactive[D], Transpose, Plus, Inactive[TensorProduct], TensorContract, ArrayContract, Dot, ArrayDot and ArrayReshape nodes in both their active and their inactive spelling; a node whose operand has no known shape, and non-array input including ragged lists, quietly give {}."
+ArrayDimensions::usage = "ArrayDimensions[a] gives the dimensions of an array container of any tier without materializing it, recursing structurally through Inactive[D], Transpose, Plus, Inactive[TensorProduct], TensorContract, ArrayContract, Dot, ArrayDot and ArrayReshape nodes in both their active and their inactive spelling, and through the unevaluated form this paclet's own ArrayVector, ReshapeArray and PadArray take on a symbolic operand; a node whose operand has no known shape, a pad specification whose result is not an array, and non-array input including ragged lists, quietly give {}."
 
 ArrayRank::usage = "ArrayRank[a] gives the number of dimensions of an array container of any tier without materializing it."
 
@@ -235,6 +235,43 @@ ArrayDimensions[HoldPattern[IgnoringInactive[ArrayDot[x_, y_, pairs : {{_Integer
 (* ArrayReshape states its result shape outright; that the operand is a
    container is what classification has already settled. *)
 ArrayDimensions[HoldPattern[IgnoringInactive[ArrayReshape[t_, dims : {___Integer}, ___]]]] := dims
+
+
+(* The shape of a pad, for the specifications that yield an array at all.
+
+   A single m pads every level by m on each side, and {m, n} pads every level by
+   m before and n after.  A per-level list pads level i by its i-th pair, but
+   ONLY when it gives a pair for every level: ArrayPad[a, {{1, 2}}] on a rank-3
+   array pads the outer level with scalars beside rank-2 blocks and the result
+   is ragged, not an array, so there is no shape to report.  Negative padding
+   trims, and a level trimmed to zero collapses what Dimensions reports, so a
+   shape is claimed only when every level stays positive. *)
+
+padShape[{}, _] := {}
+
+padShape[dims_List, m_Integer] := positiveShape[dims + 2 m]
+
+padShape[dims_List, {m_Integer, n_Integer}] := positiveShape[dims + m + n]
+
+padShape[dims_List, spec : {{_Integer, _Integer} ..}] /; Length[spec] === Length[dims] :=
+    positiveShape[dims + Total /@ spec]
+
+padShape[_, _] := {}
+
+positiveShape[dims_] := If[AllTrue[dims, Positive], dims, {}]
+
+
+(* The unevaluated forms of this paclet's own shape-only operations, admitted
+   as nodes in Classification.wl.  Each states its result shape from the
+   operand's, exactly as the Inactive nodes above do. *)
+
+ArrayDimensions[HoldPattern[ArrayVector[t_]]] := With[{dims = ArrayDimensions[t]},
+    If[dims === {}, {}, {Times @@ dims}]
+]
+
+ArrayDimensions[HoldPattern[ReshapeArray[t_, dims : {___Integer}, ___]]] := dims
+
+ArrayDimensions[HoldPattern[PadArray[t_, spec_, ___]]] := padShape[ArrayDimensions[t], spec]
 
 
 ArrayRank[t_] := Length[ArrayDimensions[t]]

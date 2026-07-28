@@ -311,6 +311,50 @@ VerificationTest[
     TestID -> "shape-structural-node-shapes-agree-with-activate"
 ]
 
+(* The paclet's own shape-only operations are admitted as nodes too, in the
+   form they take when their operand is symbolic and they cannot run. Activate
+   does not compute those - they fire as soon as the operand becomes explicit,
+   so they are only ever seen wrapping a symbolic one - and they are checked
+   here against the shape their evaluated counterpart has instead. *)
+
+$symOperand = MatrixSymbol["M", {2, 3}]
+$expOperand = ConstantArray[1, {2, 3}]
+
+VerificationTest[
+    Map[
+        {ArrayContainerQ[First[#]], ArrayDimensions[First[#]] === Last[#]} &,
+        {
+            {ArrayVector[$symOperand], Dimensions[ArrayVector[$expOperand]]},
+            {ReshapeArray[$symOperand, {6}], Dimensions[ReshapeArray[$expOperand, {6}]]},
+            {PadArray[$symOperand, 1], Dimensions[PadArray[$expOperand, 1]]},
+            {PadArray[$symOperand, {1, 2}], Dimensions[PadArray[$expOperand, {1, 2}]]},
+            {PadArray[$symOperand, {{1, 2}, {3, 4}}], Dimensions[PadArray[$expOperand, {{1, 2}, {3, 4}}]]}
+        }
+    ],
+    ConstantArray[{True, True}, 5],
+    TestID -> "shape-unevaluated-operation-nodes-agree-with-evaluated"
+]
+
+(* A pad specification that does not give an array claims no shape: a partial
+   per-level spec pads the outer level with scalars beside blocks and goes
+   ragged, and trimming a level to zero collapses what Dimensions reports. *)
+VerificationTest[
+    {
+        ArrayDimensions[PadArray[ArraySymbol["A", {2, 3, 4}], {{1, 2}}]],
+        ArrayDimensions[PadArray[$symOperand, -1]]
+    },
+    {{}, {}},
+    TestID -> "shape-pad-node-without-an-array-result-gives-empty"
+]
+
+(* An operand that is not a container leaves the call a plain unevaluated
+   expression, not an array. *)
+VerificationTest[
+    {ArrayContainerQ[ArrayVector[notAnArray]], ArrayContainerQ[ReshapeArray[notAnArray, {2}]]},
+    {False, False},
+    TestID -> "shape-unevaluated-operation-on-non-array-is-not-a-container"
+]
+
 (* A shape that came back {} must never leak out of the index arithmetic: the
    enclosing node has to answer {} quietly rather than emit Delete::partw and
    hand back an unevaluated Delete expression that fails ListQ. *)

@@ -26,6 +26,7 @@ PackageScope[arrayDomainHead]
 PackageScope[structuralNodeOperands]
 PackageScope[structuralNodeQ]
 PackageScope[deferredTreeQ]
+PackageScope[$inactiveNodeHeads]
 
 
 ArrayContainerQ::usage = "ArrayContainerQ[a] gives True if a is a supported array container of any tier: explicit, lazy parametric, or symbolic."
@@ -234,6 +235,28 @@ structuralNodeOperands[HoldPattern[ReshapeArray[t_, _, ___]]] := {t}
 structuralNodeOperands[HoldPattern[PadArray[t_, _, ___]]] := {t}
 
 structuralNodeOperands[___] := None
+
+(* The heads that can appear INACTIVE as a node, for the one caller that has to
+   ACTIVATE a tree rather than classify it.
+
+   ArrayMaterialize must activate the NODES and nothing else.  A bare Activate
+   fires every Inactive in the expression, including any the LEAVES hold as
+   data: a leaf carrying Inactive[Integrate][x, x] came back as x^2/2, which is
+   not a materialization of the tree but an evaluation of its contents.  Passing
+   this as Activate's second argument confines it to this vocabulary, the way
+   TensorNetworks confines its own with Activate[expr, TensorContract].
+
+   This is a SUBSET of the heads admitted above, and deliberately so - a head
+   belongs here only if a clause admits it in its INACTIVE spelling, since a
+   head that is only ever admitted active cannot be a node in inactive form and
+   listing it could only reach a leaf's data.  Plus is admitted as
+   Verbatim[Plus] alone, and ArrayVector, ReshapeArray and PadArray only as
+   unevaluated calls, so none of the four appears here: with Plus listed, a leaf
+   holding Inactive[Plus][1, 2] was summed to 3. *)
+
+$inactiveNodeHeads =
+    D | Transpose | TensorProduct | ArrayContract | TensorContract |
+    Dot | ArrayDot | ArrayReshape
 
 
 structuralNodeQ[a_] := ListQ[structuralNodeOperands[a]]

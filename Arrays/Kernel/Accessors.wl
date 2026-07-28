@@ -120,8 +120,30 @@ ArrayMaterialize[a_ ? ArrayLazyQ] := lazyMaterialize[a]
    deferredLeafQ - ArrayExplicitQ forwards through it - and the node reads its
    shape through the same forwarding, but Activate would hand the handle itself
    to TensorProduct, Dot or Transpose, none of which know it, and the tree came
-   back an unevaluated expression instead of its array. *)
-ArrayMaterialize[a_ ? deferredTreeQ] := Activate[unwrapArrayObjects[a]]
+   back an unevaluated expression instead of its array.
+
+   Only the NODE heads are activated.  A bare Activate fires every Inactive in
+   the expression, the leaves' own included: a leaf carrying
+   Inactive[Integrate][x, x] came back as x^2/2, which evaluates the contents
+   rather than materializing the tree.  $inactiveNodeHeads is the vocabulary
+   from Classification.wl restricted to the heads a clause admits INACTIVELY.
+
+   The CONTRACTIONS are activated first, and that is the whole reason this is
+   two passes rather than one.  A contraction over a tensor product is the shape
+   a tensor-network contraction leaves behind, and TensorContract handles an
+   INACTIVE TensorProduct operand directly - it contracts the operands against
+   each other and never builds the product.  Activate the product first and the
+   full outer product is built, only to be summed away immediately: on two rank-3
+   operands of dimension 14 that is 125MB and 23ms against 1MB and 0.6ms, a
+   factor of 119 in memory that grows with the rank of the tree.  A single
+   restricted pass does not help, because it is the ORDER and not the vocabulary
+   that decides this - it measures the same 125MB as a bare Activate.
+
+   This is what TensorNetworks does in ActivateTensors, and for this reason. *)
+ArrayMaterialize[a_ ? deferredTreeQ] := Activate[
+    Activate[unwrapArrayObjects[a], ArrayContract | TensorContract],
+    $inactiveNodeHeads
+]
 
 ArrayMaterialize[a_ ? ArraySymbolicQ] := a
 

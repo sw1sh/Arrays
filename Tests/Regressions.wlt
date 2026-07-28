@@ -532,4 +532,58 @@ VerificationTest[
     TestID -> "regression-array-object-as-a-deferred-tree-leaf"
 ]
 
+(* Materializing a deferred tree activates the NODES, not everything inactive in
+   it. A bare Activate fired whatever the LEAVES held as data too: a leaf
+   carrying Inactive[Integrate][x, x] came back as x^2/2, which evaluates the
+   contents rather than materializing the tree. *)
+VerificationTest[
+    {
+        ArrayMaterialize[Inactive[Transpose][{{Inactive[Integrate][regX, regX], 1.}, {2., 3.}}, {2, 1}]][[1, 1]],
+        ArrayMaterialize[Inactive[Transpose][{{Inactive[Plus][1, 2], 1.}, {2., 3.}}, {2, 1}]][[1, 1]]
+    },
+    {Inactive[Integrate][regX, regX], Inactive[Plus][1, 2]},
+    TestID -> "regression-materialize-activates-only-the-node-heads"
+]
+
+(* The contractions are activated BEFORE the products they contract over.
+   TensorContract handles an inactive TensorProduct operand without ever
+   building the product; activating the product first builds the full outer
+   product and sums it away immediately - 119x the memory on two rank-3
+   operands of dimension 14, growing with the rank of the tree. *)
+VerificationTest[
+    Block[{regA = RandomReal[1, {12, 12, 12}], regB = RandomReal[1, {12, 12, 12}]},
+        With[{tree = Inactive[TensorContract][Inactive[TensorProduct][regA, regB], {{3, 4}}]},
+            {
+                ArrayMaterialize[tree] == Activate[Activate[tree, TensorContract]],
+                MaxMemoryUsed[ArrayMaterialize[tree]] < MaxMemoryUsed[Activate[tree]] / 10
+            }
+        ]
+    ],
+    {True, True},
+    TestID -> "regression-materialize-contracts-before-building-the-product"
+]
+
+(* ... and every head a clause admits inactively still activates. *)
+VerificationTest[
+    With[{m = SparseArray[{{1., 2.}, {3., 4.}}], v = SparseArray[{1., 2.}]},
+        Normal /@ {
+            ArrayMaterialize[Inactive[TensorProduct][v, SparseArray[{3., 4.}]]],
+            ArrayMaterialize[Inactive[TensorContract][Inactive[TensorProduct][m, m], {{2, 3}}]],
+            ArrayMaterialize[Inactive[Dot][m, m]],
+            ArrayMaterialize[Inactive[ArrayDot][m, m, {{2, 1}}]],
+            ArrayMaterialize[Inactive[Transpose][m, {2, 1}]],
+            ArrayMaterialize[Inactive[ArrayReshape][m, {4}]]
+        }
+    ],
+    {
+        {{3., 4.}, {6., 8.}},
+        {{7., 10.}, {15., 22.}},
+        {{7., 10.}, {15., 22.}},
+        {{7., 10.}, {15., 22.}},
+        {{1., 3.}, {2., 4.}},
+        {1., 2., 3., 4.}
+    },
+    TestID -> "regression-materialize-still-activates-every-inactive-node-head"
+]
+
 EndTestSection[]

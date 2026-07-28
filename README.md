@@ -22,6 +22,17 @@ function keeps operating on raw containers, and a handle is unwrapped to one - b
 `ArrayObject[a]["Data"]`, or at the entry point of every exported function - before any
 of them sees it. A result is never re-wrapped.
 
+## Installation
+
+Published on the Wolfram Paclet Repository as
+[**Wolfram/Arrays**](https://resources.wolframcloud.com/PacletRepository/resources/Wolfram/Arrays/):
+
+```wl
+PacletInstall["Wolfram/Arrays"]
+
+Needs["Wolfram`Arrays`"]
+```
+
 ## Layout
 
 ```

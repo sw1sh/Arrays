@@ -140,6 +140,35 @@ contractedRank[arrays_List, c_] := Total[Map[ArrayRank, arrays]] - Length[Flatte
    array of scalar expressions that substitute to the right values. *)
 expandedOperands[arrays_List] := Replace[arrays, a_ ? ArrayLazyQ :> ArrayMaterialize[a], {1}]
 
+(* A WRAPPER operand contracts its materialized data, which is what the
+   single-operand clause at the foot of this section already does and for the
+   same reason: TensorContract does not evaluate on a wrapper head.  The list
+   form used to hand the wrapper straight to the tensor product, and the damage
+   went past the operand itself - the whole contraction came back an inert node
+   which satisfied ArrayContainerQ but which ArrayMaterialize could not resolve
+   either, so an all-explicit operand set produced something with no values.
+
+   It has to run BEFORE the lazy clauses below, not after: with a lazy operand
+   in the set the rebuild is handed an inner contraction that is not an array,
+   declines, and the fallback expands the lazy operand per scalar - so a wrapper
+   left wrapped here silently defeats the lazy lowering those clauses document,
+   and ArrayContract[{NumericArray[...], lazy}, c] dropped out of the lazy tier
+   where the same call with a SparseArray stayed in it.
+
+   The operands that need it are exactly the explicit ones that are not ArrayQ.
+   That is the property TensorContract itself turns on, checked head by head: a
+   List, a SparseArray, a QuantityArray and a SymmetrizedArray all contract
+   natively, and a NumericArray, a ByteArray, a Dataset and a Tabular do not.
+   wrapperExplicitQ is the wrong test here - it does not hold for a NumericArray,
+   which is the head that started this - and ArrayComputeNativeQ is wrong the
+   other way, since it does not hold for a SymmetrizedArray, whose structure the
+   clause at the foot of this section deliberately keeps on the native path. *)
+
+nativelyContractibleQ[a_] := ! ArrayExplicitQ[a] || ArrayQ[a]
+
+contractJoin[arrays_, c_] := contractJoin[Replace[arrays, a_ /; ! nativelyContractibleQ[a] :> ArrayMaterialize[a], {1}], c] /;
+    ! AllTrue[arrays, nativelyContractibleQ]
+
 (* EXACTLY ONE lazy operand is the case the rebuild can express: the explicit
    operands are contracted against the value grid of an InterpolatingFunction,
    the branch values of a Piecewise or the body of a Function, and the result
@@ -195,9 +224,14 @@ ArrayContract[arrays : {__ ? ArrayContainerQ}, c_] := contractJoin[arrays, c] /;
    lazy form handed to TensorContract is contracted as an expression tree. *)
 ArrayContract[a_ ? ArrayLazyQ, c_] := contractJoin[{a}, c]
 
-(* TensorContract does not evaluate on the wrapper heads, so they contract
-   their materialized data instead of returning an inert wrapper. *)
-ArrayContract[a_ ? wrapperExplicitQ, c_] := ArrayContract[ArrayMaterialize[a], c]
+(* TensorContract does not evaluate on the heads that are not ArrayQ, so they
+   contract their materialized data instead of returning an inert wrapper.  This
+   is the single-operand form of the rule the list form applies above, and it is
+   guarded the same way: wrapperExplicitQ alone missed a NumericArray, which
+   contracted to an inert TensorContract that ArrayMaterialize could not resolve
+   either, while its sibling operations (ArrayConjugate, ArrayMap, PadArray) all
+   handle that head. *)
+ArrayContract[a_ ? ArrayExplicitQ, c_] /; ! ArrayQ[a] := ArrayContract[ArrayMaterialize[a], c]
 
 (* TensorContract preserves SymmetrizedArray structure natively (the
    contraction of a structured atom stays a SymmetrizedArray), so structured

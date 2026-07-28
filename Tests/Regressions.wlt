@@ -436,4 +436,100 @@ VerificationTest[
     TestID -> "edge-zero-dimension-structural-short-circuit"
 ]
 
+
+(* An explicit container with no element-spec clause answered Missing, and an
+   unknown domain is DROPPED from a join rather than widening it - so the type
+   algebra returned a WRONG domain rather than an unknown one. *)
+
+$symmetrized = SymmetrizedArray[{{1, 2} -> 3.}, {3, 3}, Symmetric[{1, 2}]]
+$tabular = Tabular[{<|"a" -> 1., "b" -> 2.|>, <|"a" -> 3., "b" -> 4.|>}]
+$store = CreateDataStructure["DynamicArray", {1., 2., 3.}]
+
+VerificationTest[
+    ArrayElementDomain /@ {$symmetrized, $tabular, Dataset[{{1, 2}, {3, 4}}], Dataset[{{1., 2.}}], $store},
+    {Reals, Reals, Integers, Reals, Reals},
+    TestID -> "regression-element-domain-of-every-explicit-container"
+]
+
+VerificationTest[
+    ArrayUnify[{$symmetrized, {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}}]["Domain"] ===
+        ArrayUnify[{Normal[$symmetrized], {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}}]["Domain"],
+    True,
+    TestID -> "regression-unknown-domain-no-longer-narrows-a-join"
+]
+
+(* The lazy tier still has no domain to report, which is the documented
+   contract and not the gap above. *)
+VerificationTest[
+    ArrayElementDomain[Piecewise[{{{{1., 2.}, {3., 4.}}, regZ < 0}}, {{5., 6.}, {7., 8.}}]],
+    Missing["NotApplicable"],
+    TestID -> "regression-lazy-domain-still-unknown"
+]
+
+
+(* TensorContract does not evaluate on a head that is not ArrayQ. The list form
+   of ArrayContract handed such an operand straight to the tensor product, and
+   the whole contraction came back an inert node that satisfied ArrayContainerQ
+   but that ArrayMaterialize could not resolve either. *)
+
+VerificationTest[
+    With[{na = NumericArray[{{1., 2.}, {3., 4.}}], sa = SparseArray[{{1., 2.}, {3., 4.}}]},
+        {
+            (Normal /@ ArrayContract[{na, sa}, {{2, 3}}]) === (Normal /@ ArrayContract[{sa, sa}, {{2, 3}}]),
+            ArrayContract[{na, sa}, {{1, 3}, {2, 4}}] === ArrayContract[{sa, sa}, {{1, 3}, {2, 4}}],
+            ArrayContract[na, {{1, 2}}] === ArrayContract[sa, {{1, 2}}]
+        }
+    ],
+    {True, True, True},
+    TestID -> "regression-contract-materializes-a-non-arrayq-operand"
+]
+
+(* Same root cause, worse symptom: with a lazy operand in the set the rebuild
+   was handed an inner contraction that is not an array, declined, and the
+   fallback dropped the result out of the lazy tier ArrayUnify promises. *)
+VerificationTest[
+    With[{
+        na = NumericArray[{{1., 2.}, {3., 4.}}], sa = SparseArray[{{1., 2.}, {3., 4.}}],
+        pw = Piecewise[{{{{1., 2.}, {3., 4.}}, regZ < 0}}, {{5., 6.}, {7., 8.}}]
+    },
+        {
+            ArrayLazyQ[ArrayContract[{na, pw}, {{2, 3}}]],
+            ArrayReplaceAll[ArrayContract[{na, pw}, {{2, 3}}], regZ -> -1] ===
+                ArrayReplaceAll[ArrayContract[{sa, pw}, {{2, 3}}], regZ -> -1]
+        }
+    ],
+    {True, True},
+    TestID -> "regression-contract-keeps-the-lazy-tier-past-a-wrapper"
+]
+
+(* A SymmetrizedArray is ArrayQ and contracts natively, so it must stay off the
+   materializing route the clause above takes. *)
+VerificationTest[
+    Head[ArrayContract[SymmetrizedArray[{{1, 2} -> 3.}, {3, 3}, Symmetric[{1, 2}]], {{1, 2}}]] =!= TensorContract,
+    True,
+    TestID -> "regression-structured-array-stays-on-the-native-contract-path"
+]
+
+
+(* An ArrayObject handle passes deferredLeafQ and its shape reads through the
+   node, but Activate handed the handle itself to TensorProduct, Dot or
+   Transpose, so the tree materialized to an unevaluated expression rather than
+   to its array - a wrong VALUE, not a refusal. *)
+VerificationTest[
+    With[{v = SparseArray[{1., 2.}], w = SparseArray[{3., 4.}], m = SparseArray[{{1., 2.}, {3., 4.}}]},
+        {
+            Normal[ArrayMaterialize[Inactive[TensorProduct][ArrayObject[v], w]]] ===
+                Normal[ArrayMaterialize[Inactive[TensorProduct][v, w]]],
+            Normal[ArrayMaterialize[Inactive[Dot][ArrayObject[m], m]]] ===
+                Normal[ArrayMaterialize[Inactive[Dot][m, m]]],
+            Normal[ArrayMaterialize[Inactive[Transpose][ArrayObject[m], {2, 1}]]] ===
+                Normal[ArrayMaterialize[Inactive[Transpose][m, {2, 1}]]],
+            Normal[ArrayMaterialize[Inactive[ArrayReshape][ArrayObject[m], {4}]]] ===
+                Normal[ArrayMaterialize[Inactive[ArrayReshape][m, {4}]]]
+        }
+    ],
+    {True, True, True, True},
+    TestID -> "regression-array-object-as-a-deferred-tree-leaf"
+]
+
 EndTestSection[]

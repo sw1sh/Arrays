@@ -3,6 +3,8 @@ Package["Wolfram`Arrays`"]
 PackageExport[ArrayObject]
 PackageExport[ArrayObjectQ]
 
+PackageScope[unwrapArrayObjects]
+
 
 (* ArrayObject is a completeness feature: a uniform, self-describing handle
    around any supported container, whose summary box says at a glance what kind
@@ -192,6 +194,24 @@ objectContainer[HoldPattern[ArrayObject[a_]]] := a
 (* A malformed handle (wrong arity, already diagnosed by ArrayObject::argx) has
    no container to take, so it stands for itself and fails the test below. *)
 objectContainer[expr_] := expr
+
+(* Handles taken out of an expression that something else is about to evaluate.
+
+   An UpValue reaches a handle that is an ARGUMENT, which covers every operation
+   this file forwards; it cannot reach one nested inside an expression that a
+   third function evaluates.  A deferred structural tree is exactly that case: a
+   handle passes deferredLeafQ, because ArrayExplicitQ forwards, and its shape
+   reads through the node - but the tree materializes by Activate, which hands
+   the handle itself to TensorProduct, Dot, Transpose or Plus, none of which
+   know it.  Every node head produced an unevaluated expression rather than the
+   tree's array, so the unwrapping happens once, here, rather than as an UpValue
+   on each of those heads - which would mean giving Plus and Dot UpValues for a
+   container handle, far past what this file is for.
+
+   Kept beside objectContainer so that knowledge of the handle's shape stays in
+   this file and the caller only names the helper. *)
+
+unwrapArrayObjects[expr_] := expr /. o_ArrayObject /; ArrayObjectQ[o] :> objectContainer[o]
 
 (* Re-validation on use, since the handle carries the evaluated flag and its
    container's admission can lapse.  A stale handle messages and gives

@@ -114,8 +114,14 @@ ArrayMaterialize[a_ ? ArrayLazyQ] := lazyMaterialize[a]
    materialize-then-operate fallback - ArrayNumericQ, ArrayAllZeroQ, the wrapper
    clauses of Vector.wl and Structural.wl - with nothing to fall back to.  The
    leafless symbolic containers keep the identity behaviour below: they have no
-   values to compute. *)
-ArrayMaterialize[a_ ? deferredTreeQ] := Activate[a]
+   values to compute.
+
+   Any ArrayObject handle among the leaves is unwrapped first.  A handle passes
+   deferredLeafQ - ArrayExplicitQ forwards through it - and the node reads its
+   shape through the same forwarding, but Activate would hand the handle itself
+   to TensorProduct, Dot or Transpose, none of which know it, and the tree came
+   back an unevaluated expression instead of its array. *)
+ArrayMaterialize[a_ ? deferredTreeQ] := Activate[unwrapArrayObjects[a]]
 
 ArrayMaterialize[a_ ? ArraySymbolicQ] := a
 

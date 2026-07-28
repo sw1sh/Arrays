@@ -246,6 +246,51 @@ arrayElementSpec[a_SparseArray] := valuesSpec[Append[a["ExplicitValues"], a["Imp
 
 arrayElementSpec[a_List] := valuesSpec[a]
 
+(* The remaining explicit containers.  Without these they fell through to the
+   structural-tree clause below and answered Missing, which is not merely a gap
+   in the report: an unknown domain is DROPPED from a join, so ArrayUnify of a
+   SymmetrizedArray of reals with an integer List gave Integers, and ArrayCoerce
+   refused with ArrayCoerce::narrow naming Missing[NotApplicable].  Each reads
+   the same metadata its ArrayNumericQ and ArrayNumberQ clauses in Shape.wl
+   already read, so none of them materializes either.
+
+   A structured array stores its rules, and ArrayRules reads them without
+   building the array; the default rule's value counts among them, for the
+   reason the SparseArray clause appends its implicit value.  A QuantityArray is
+   a structured array too but has its own clause above, which is the more
+   specific one and so still wins. *)
+
+arrayElementSpec[a_ ? StructuredArray`StructuredArrayQ] := valuesSpec[Values[ArrayRules[a]]]
+
+(* A Tabular answers per column, and the columns join: a mixed Integer64 and
+   Real64 table is a real table, and a column of a non-numeric type contributes
+   nothing, exactly as an unknown operand does not constrain a join. *)
+arrayElementSpec[a_Tabular] := If[ TabularQ[a],
+    arrayElementSpecJoin[columnTypeSpec /@ Normal[TabularStructure[a][[All, "ColumnType"]]]],
+    Missing["NotApplicable"]
+]
+
+(* A Dataset stores a type signature, which is what its ArrayNumericQ clause
+   reads; the element rung of that signature carries the domain. *)
+arrayElementSpec[a_Dataset] := datasetTypeSpec[Quiet @ Dataset`GetType[a]]
+
+datasetTypeSpec[TypeSystem`Vector[t_, _]] := datasetTypeSpec[t]
+
+datasetTypeSpec[TypeSystem`Atom[Integer]] := {Integers, "Exact"}
+
+datasetTypeSpec[TypeSystem`Atom[Rational]] := {Rationals, "Exact"}
+
+datasetTypeSpec[TypeSystem`Atom[Real]] := {Reals, 64}
+
+datasetTypeSpec[TypeSystem`Atom[Complex]] := {Complexes, 64}
+
+datasetTypeSpec[___] := Missing["NotApplicable"]
+
+(* A DataStructure array store is untyped, so its elements are inspected, which
+   is what its ArrayNumericQ clause does; "Elements" is already a packed
+   snapshot. *)
+arrayElementSpec[ds_DataStructure] := If[wrapperExplicitQ[ds], valuesSpec[ds["Elements"]], Missing["NotApplicable"]]
+
 (* The symbolic array heads are spelled out rather than spliced from the
    symbolicArrayHead alias in Classification.wl, for the reason ArrayName in
    Structural.wl spells them out: an assignment evaluates its left-hand side, so

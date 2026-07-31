@@ -125,7 +125,7 @@ ArrayDimensions[ds_DataStructure] := If[wrapperExplicitQ[ds], {ds["Length"]}, {}
    argument count, Dimensions on an unevaluated Piecewise is its argument count
    too, and Dimensions[pf] reports internal expression parts.  This clause is
    the interception point for all of them at once. *)
-ArrayDimensions[a_ ? ArrayLazyQ] := lazyDimensions[a]
+ArrayDimensions[a_ ? lazyContainerQ] := lazyDimensions[a]
 
 
 (* === structural trees ===

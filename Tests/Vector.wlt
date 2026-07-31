@@ -160,16 +160,16 @@ VerificationTest[
 $deferred = Inactive[TensorProduct][SparseArray[{1., 2.}], SparseArray[{3., 4.}]]
 
 VerificationTest[
-    {ArraySymbolicQ[$deferred], ArrayDimensions[$deferred]},
-    {True, {2, 2}},
-    TestID -> "Deferred-tree-is-a-symbolic-container"
+    {ArrayLazyQ[$deferred], ArraySymbolicQ[$deferred], ArrayDimensions[$deferred]},
+    {True, False, {2, 2}},
+    TestID -> "Deferred-tree-is-a-lazy-container"
 ]
 
 (* The flatten must NOT compute the tree: the result is still a deferred
    container, and only ArrayMaterialize turns it into numbers. *)
 VerificationTest[
     With[{flat = ArrayVector[$deferred]},
-        {ArraySymbolicQ[flat], ArrayExplicitQ[flat], ArrayDimensions[flat], Normal @ ArrayMaterialize[flat]}
+        {ArrayLazyQ[flat], ArrayExplicitQ[flat], ArrayDimensions[flat], Normal @ ArrayMaterialize[flat]}
     ],
     {True, False, {4}, {3., 4., 6., 8.}},
     TestID -> "Deferred-tree-flatten-stays-deferred"
@@ -177,7 +177,7 @@ VerificationTest[
 
 VerificationTest[
     With[{r = ReshapeArray[$deferred, {4}]},
-        {ArraySymbolicQ[r], ArrayExplicitQ[r], ArrayDimensions[r], Normal @ ArrayMaterialize[r]}
+        {ArrayLazyQ[r], ArrayExplicitQ[r], ArrayDimensions[r], Normal @ ArrayMaterialize[r]}
     ],
     {True, False, {4}, {3., 4., 6., 8.}},
     TestID -> "Deferred-tree-reshape-stays-deferred"
@@ -187,7 +187,7 @@ VerificationTest[
    composing onto it without computing anything. *)
 VerificationTest[
     With[{t = ArrayTranspose[ReshapeArray[$deferred, {4, 1}], Cycles[{{1, 2}}]]},
-        {ArraySymbolicQ[t], ArrayDimensions[t], Normal @ ArrayMaterialize[t]}
+        {ArrayLazyQ[t], ArrayDimensions[t], Normal @ ArrayMaterialize[t]}
     ],
     {True, {1, 4}, {{3., 4., 6., 8.}}},
     TestID -> "Deferred-shape-only-operations-compose"

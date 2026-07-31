@@ -153,7 +153,21 @@ ArrayComputeNativeQ[___] := False
    Head-wards to a Symbol (one step for a List or a SparseArray) and answers
    False without looking at any element. *)
 
-ArrayLazyQ[a_] := lazyContainerQ[a]
+(* A DEFERRED structural tree belongs to this tier, not the symbolic one.  What
+   separates the two is whether the container can produce values: every leaf of
+   a deferred tree is an explicit container, so the tree is a computation that
+   has not been run, and Activate runs it - which is exactly what lazy means
+   here.  A symbolic container has no values to produce at all, only a shape and
+   a domain.  Classifying a tensor-network contraction as symbolic put a
+   computable array in the tier reserved for ones that are not.
+
+   lazyContainerQ, not this, is what the per-head rebuild machinery dispatches
+   on: a deferred tree has no registered head and no rebuild, so the structural
+   operations reach it through their own deferredTreeQ clauses.  The two are
+   deliberately different predicates - this one is the TIER, that one is the
+   REGISTRY. *)
+
+ArrayLazyQ[a_] := lazyContainerQ[a] || deferredTreeQ[a]
 
 ArrayLazyQ[___] := False
 
@@ -287,7 +301,14 @@ $inactiveNodeHeads =
 structuralNodeQ[a_] := ListQ[structuralNodeOperands[a]]
 
 
-structuralOperandsQ[operands_List] := AnyTrue[operands, ArraySymbolicQ] || AllTrue[operands, ArrayExplicitQ]
+(* A structural tree is SYMBOLIC when it carries a symbolic container, and only
+   then.  A tree whose leaves are all explicit has values it has merely not
+   computed, so it is deferred and belongs to the lazy tier (see ArrayLazyQ); it
+   used to answer True here as well, which made a tensor-network contraction and
+   a tree over a VectorSymbol indistinguishable - same tier, same predicates,
+   although one produces an array on demand and the other never can. *)
+
+structuralOperandsQ[operands_List] := AnyTrue[operands, ArraySymbolicQ]
 
 ArraySymbolicQ[a_] := With[{operands = structuralNodeOperands[a]},
     ListQ[operands] && structuralOperandsQ[operands]

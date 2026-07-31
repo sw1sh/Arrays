@@ -40,7 +40,7 @@ ArrayExplicitValues[a_SparseArray] := a["ExplicitValues"]
 
 ArrayExplicitValues[a_ ? ArrayExplicitQ] := If[ZeroArrayQ[a], {}, toSparseArray[a]["ExplicitValues"]]
 
-ArrayExplicitValues[a_ ? ArrayLazyQ] := Missing["NotExplicit"]
+ArrayExplicitValues[a_ ? lazyContainerQ] := Missing["NotExplicit"]
 
 ArrayExplicitValues[a_ ? ArraySymbolicQ] := Missing["NotExplicit"]
 
@@ -49,7 +49,7 @@ ArrayExplicitPositions[a_SparseArray] := a["ExplicitPositions"]
 
 ArrayExplicitPositions[a_ ? ArrayExplicitQ] := If[ZeroArrayQ[a], {}, toSparseArray[a]["ExplicitPositions"]]
 
-ArrayExplicitPositions[a_ ? ArrayLazyQ] := Missing["NotExplicit"]
+ArrayExplicitPositions[a_ ? lazyContainerQ] := Missing["NotExplicit"]
 
 ArrayExplicitPositions[a_ ? ArraySymbolicQ] := Missing["NotExplicit"]
 
@@ -58,7 +58,7 @@ ArrayExplicitLength[a_SparseArray] := a["ExplicitLength"]
 
 ArrayExplicitLength[a_ ? ArrayExplicitQ] := If[ZeroArrayQ[a], 0, toSparseArray[a]["ExplicitLength"]]
 
-ArrayExplicitLength[a_ ? ArrayLazyQ] := Missing["NotExplicit"]
+ArrayExplicitLength[a_ ? lazyContainerQ] := Missing["NotExplicit"]
 
 ArrayExplicitLength[a_ ? ArraySymbolicQ] := Missing["NotExplicit"]
 
@@ -105,7 +105,7 @@ ArrayMaterialize[a_ ? ArrayExplicitQ] := Normal[a]
    InterpolatingFunction, threading through the branches of a Piecewise, an
    array of scalar Functions for a Function), and an Indexed expansion where it
    does not. *)
-ArrayMaterialize[a_ ? ArrayLazyQ] := lazyMaterialize[a]
+ArrayMaterialize[a_ ? lazyContainerQ] := lazyMaterialize[a]
 
 (* A deferred tree is a structural tree whose leaves are all explicit, so its
    shape and its values are both fully determined and its materialization is one

@@ -269,8 +269,8 @@ VerificationTest[
 
 VerificationTest[
     Map[ArrayTier, ArrayUnify[{$sparse, $lazyFunction, $overReals}]["Arrays"]],
-    {"Symbolic", "Lazy", "Symbolic"},
-    TestID -> "types-unify-leaves-a-lazy-operand-of-a-symbolic-join"
+    {"Explicit", "Lazy", "Symbolic"},
+    TestID -> "types-unify-leaves-an-uncoercible-operand-of-a-symbolic-join"
 ]
 
 VerificationTest[
@@ -285,11 +285,26 @@ EndTestSection[]
 
 BeginTestSection["types - coercion"]
 
-(* Up the tier lattice is free. *)
+(* Deferring a container is free; making one symbolic is not possible at all.
+   A symbolic container carries a symbol - a shape and a domain and no values -
+   and there is nothing to turn known values into unknown ones with, so the
+   coercion refuses and leaves the call unevaluated. The lift that used to serve
+   this case, Inactive[TensorProduct][a], is a structural tree over an explicit
+   leaf: it computes an array on demand, which is the lazy tier. *)
 VerificationTest[
-    Map[ArrayTier[ArrayCoerce[$plainMatrix, #]] &, {"Explicit", "Lazy", "Symbolic"}],
-    {"Explicit", "Lazy", "Symbolic"},
-    TestID -> "types-coerce-explicit-up-every-tier"
+    Map[ArrayTier[Quiet[ArrayCoerce[$plainMatrix, #]]] &, {"Explicit", "Lazy"}],
+    {"Explicit", "Lazy"},
+    TestID -> "types-coerce-explicit-up-to-the-lazy-tier"
+]
+
+VerificationTest[
+    {
+        Head[Quiet[ArrayCoerce[$plainMatrix, "Symbolic"]]],
+        Head[Quiet[ArrayCoerce[$lazyFunction, "Symbolic"]]],
+        ArrayTier[Quiet[ArrayCoerce[$overReals, "Symbolic"]]]
+    },
+    {ArrayCoerce, ArrayCoerce, "Symbolic"},
+    TestID -> "types-coerce-refuses-to-invent-a-symbolic-container"
 ]
 
 (* The lift is the constant Function of a formal parameter, so binding that
@@ -303,10 +318,14 @@ VerificationTest[
     TestID -> "types-lazy-lift-keeps-shape-and-values"
 ]
 
+(* The expression that used to serve as the symbolic lift is a deferred tree:
+   it reports the LAZY tier now, and still materializes back to its values. *)
 VerificationTest[
-    ArrayMaterialize[ArrayCoerce[$plainMatrix, "Symbolic"]],
-    $plainMatrix,
-    TestID -> "types-symbolic-lift-materializes-back"
+    With[{deferred = Inactive[TensorProduct][$plainMatrix]},
+        {ArrayTier[deferred], ArrayMaterialize[deferred]}
+    ],
+    {"Lazy", $plainMatrix},
+    TestID -> "types-former-symbolic-lift-is-a-deferred-lazy-container"
 ]
 
 (* Coercing to the tier a container is already on changes nothing. *)

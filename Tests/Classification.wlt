@@ -623,3 +623,69 @@ VerificationTest[
     False,
     TestID -> "Net-open-input-declined"
 ]
+
+
+(* === tier assignment and mixing ===
+
+   The two non-explicit tiers are told apart by whether the container can
+   produce VALUES.  A deferred structural tree can: every leaf is explicit, so
+   it is a computation that has not been run and Activate runs it - that is
+   lazy.  A symbolic container cannot: it carries a symbol and has only a shape
+   and a domain.  Both used to answer ArraySymbolicQ True, which made a
+   tensor-network contraction indistinguishable from a tree over a
+   VectorSymbol. *)
+
+$mixSparse = SparseArray[{{1., 2.}, {3., 4.}}]
+$mixLazy = Piecewise[{{{{1., 2.}, {3., 4.}}, mixZ < 0}}, {{5., 6.}, {7., 8.}}]
+$mixDeferred = Inactive[TensorProduct][SparseArray[{1., 2.}], SparseArray[{3., 4.}]]
+$mixSymbol = VectorSymbol["mixv", 2]
+$mixSymTree = Inactive[TensorProduct][SparseArray[{1., 2.}], VectorSymbol["mixv", 2]]
+
+VerificationTest[
+    Map[{ArrayTier[#], ArrayExplicitQ[#], ArrayLazyQ[#], ArraySymbolicQ[#]} &,
+        {$mixSparse, $mixLazy, $mixDeferred, $mixSymbol, $mixSymTree}],
+    {
+        {"Explicit", True, False, False},
+        {"Lazy", False, True, False},
+        {"Lazy", False, True, False},
+        {"Symbolic", False, False, True},
+        {"Symbolic", False, False, True}
+    },
+    TestID -> "classification-tiers-separate-deferred-from-symbolic"
+]
+
+(* A deferred tree carries values, so joining one with an explicit or a lazy
+   container stays in the computable half of the lattice; one symbolic operand
+   anywhere takes the whole join symbolic. *)
+VerificationTest[
+    Map[ArrayUnify[#]["Tier"] &,
+        {
+            {$mixSparse, $mixLazy}, {$mixSparse, $mixDeferred}, {$mixLazy, $mixDeferred},
+            {$mixDeferred, $mixDeferred}, {$mixSparse, $mixSymbol}, {$mixLazy, $mixSymbol},
+            {$mixDeferred, $mixSymbol}, {$mixSymTree, $mixSparse}
+        }],
+    {"Lazy", "Lazy", "Lazy", "Lazy", "Symbolic", "Symbolic", "Symbolic", "Symbolic"},
+    TestID -> "classification-tier-joins-across-every-mix"
+]
+
+(* A tree is symbolic because of what it CARRIES, at any depth. *)
+VerificationTest[
+    {
+        ArrayTier[Inactive[TensorProduct][$mixDeferred, VectorSymbol["mixw", 2]]],
+        ArrayTier[Inactive[TensorProduct][$mixDeferred, $mixDeferred]]
+    },
+    {"Symbolic", "Lazy"},
+    TestID -> "classification-a-nested-symbol-makes-the-whole-tree-symbolic"
+]
+
+(* Whichever tier it lands in, a tree answers for shape without computing, and
+   only the computable one materializes to values. *)
+VerificationTest[
+    {
+        ArrayDimensions[$mixDeferred], ArrayDimensions[$mixSymTree],
+        Normal[ArrayMaterialize[$mixDeferred]],
+        ArrayMaterialize[$mixSymbol] === $mixSymbol
+    },
+    {{2, 2}, {2, 2}, {{3., 4.}, {6., 8.}}, True},
+    TestID -> "classification-shape-answers-in-both-tiers-values-only-in-the-lazy-one"
+]

@@ -51,7 +51,7 @@ ArrayName[___] := None
    unapplied Function hands back its parameter symbol.  A lazy container is
    therefore expanded per scalar first, and the part is taken of that explicit
    array of scalar lazy expressions. *)
-ArrayPart[a_ ? ArrayLazyQ, is : {__}, k_ : 0] := ArrayPart[ArrayMaterialize[a], is, k]
+ArrayPart[a_ ? lazyContainerQ, is : {__}, k_ : 0] := ArrayPart[ArrayMaterialize[a], is, k]
 
 (* Part on a structural tree reaches the expression TREE for the same reason:
    the first part of Inactive[TensorContract][inner, c] is inner, and the first
@@ -94,7 +94,7 @@ ArrayTranspose[t_, perm_] := If[ZeroArrayQ[t], {}, SimplifyArray @ Transpose[t, 
 
 ArrayTranspose[(Verbatim[Transpose] | Inactive[Transpose])[t_, perm1_], perm2_] := ArrayTranspose[t, PermutationList[PermutationProduct[perm1, perm2]]]
 
-ArrayTranspose[a_ ? ArrayLazyQ, perm_] :=
+ArrayTranspose[a_ ? lazyContainerQ, perm_] :=
     lazyStructuralOp[Transpose[#, Replace[perm, m_ <-> n_ :> Cycles[{{m, n}}]]] &, a]
 
 
@@ -128,9 +128,9 @@ ArrayTranspose[a_ ? ArrayLazyQ, perm_] :=
    the materialize-then-operate fallback every structural op has, taken over the
    whole operand set at once rather than one operand at a time. *)
 
-lazyOperandPosition[arrays_List] := SelectFirst[Range[Length[arrays]], ArrayLazyQ[arrays[[#]]] &]
+lazyOperandPosition[arrays_List] := SelectFirst[Range[Length[arrays]], lazyContainerQ[arrays[[#]]] &]
 
-lazyOperandCount[arrays_List] := Count[arrays, _ ? ArrayLazyQ]
+lazyOperandCount[arrays_List] := Count[arrays, _ ? lazyContainerQ]
 
 (* Each contracted level is dropped from the tensor product, so the rank of the
    result is arithmetic on the operand ranks and needs no probe of the node. *)
@@ -138,7 +138,7 @@ contractedRank[arrays_List, c_] := Total[Map[ArrayRank, arrays]] - Length[Flatte
 
 (* Every lazy operand replaced by its per-scalar expansion, which is an explicit
    array of scalar expressions that substitute to the right values. *)
-expandedOperands[arrays_List] := Replace[arrays, a_ ? ArrayLazyQ :> ArrayMaterialize[a], {1}]
+expandedOperands[arrays_List] := Replace[arrays, a_ ? lazyContainerQ :> ArrayMaterialize[a], {1}]
 
 (* A WRAPPER operand contracts its materialized data, which is what the
    single-operand clause at the foot of this section already does and for the
@@ -222,7 +222,7 @@ ArrayContract[arrays : {__ ? ArrayContainerQ}, c_] := contractJoin[arrays, c] /;
    for a full contraction to a scalar, through the per-scalar expansion, which is
    the same route the mixed rank-0 case takes and for the same reason: an inert
    lazy form handed to TensorContract is contracted as an expression tree. *)
-ArrayContract[a_ ? ArrayLazyQ, c_] := contractJoin[{a}, c]
+ArrayContract[a_ ? lazyContainerQ, c_] := contractJoin[{a}, c]
 
 (* TensorContract does not evaluate on the heads that are not ArrayQ, so they
    contract their materialized data instead of returning an inert wrapper.  This
@@ -302,7 +302,7 @@ lazyMapResult[f_, a_, level_] := With[{rank = ArrayRank[a]},
     ]
 ]
 
-ArrayMap[f_, a_ ? ArrayLazyQ, level_ : {-1}] := Module[{result},
+ArrayMap[f_, a_ ? lazyContainerQ, level_ : {-1}] := Module[{result},
     result /; ! MissingQ[result = lazyMapResult[f, a, level]]
 ]
 
@@ -332,7 +332,7 @@ ArrayMap[f_, a_ ? ArraySymbolicQ, level_ : {-1}] := f[a] /; elementLevelQ[level,
    would rewrite into Function[0.5, ...] - is applied instead of rewritten,
    still exactly one whole-array evaluation. *)
 
-ArrayReplaceAll[a_ ? ArrayLazyQ, rules_] := lazySubstitute[a, rules]
+ArrayReplaceAll[a_ ? lazyContainerQ, rules_] := lazySubstitute[a, rules]
 
 ArrayReplaceAll[a_SparseArray, rules_] := SparseArray[
     Thread[a["ExplicitPositions"] -> scopedReplaceAll[a["ExplicitValues"], rules]],
@@ -378,6 +378,6 @@ ArrayConjugate[a_ ? ArrayExplicitQ] := Conjugate[a]
    values; between them the rebuild reinterpolates from the values alone, so an
    NDSolve-produced interpolant, whose Hermite derivative data the value grid
    does not carry, is reproduced only to interpolation accuracy. *)
-ArrayConjugate[a_ ? ArrayLazyQ] := lazyStructuralOp[Conjugate, a]
+ArrayConjugate[a_ ? lazyContainerQ] := lazyStructuralOp[Conjugate, a]
 
 ArrayConjugate[a_ ? ArraySymbolicQ] := Conjugate[a]

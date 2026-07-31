@@ -448,10 +448,20 @@ coerceElementType[a_, target_] := With[{type = elementSpecType[targetElementSpec
 
 coerceTier[a_, Automatic] := a
 
+(* The symbolic tier is not reachable by coercion.  A container is symbolic
+   because it CARRIES a symbol - it has a shape and a domain and no values - and
+   there is nothing to turn known values into unknown ones with.  The lift used
+   to be Inactive[TensorProduct][a], a structural tree over an explicit leaf,
+   which the tier rules called symbolic while it computed an array on demand
+   like any other deferred tree; it is lazy, and lifting an explicit container
+   to it is the "Lazy" case below, not this one.
+
+   An operand that cannot be coerced is left as it stands, which ArrayUnify
+   already does for a lazy operand of a symbolic join. *)
+
 coerceTier[a_, tier_] := Which[
     ArrayTier[a] === tier, a,
     tier === "Lazy", liftedContainer[lazyConstant[a]],
-    tier === "Symbolic", liftedContainer[Inactive[TensorProduct][a]],
     True, Missing["NotCoercible"]
 ]
 

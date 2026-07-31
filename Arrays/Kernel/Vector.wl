@@ -51,7 +51,7 @@ ArrayVector[a_ ? ArrayExplicitQ] := Flatten[a]
 (* A rank-1 lazy container is already a vector, so it passes through before any
    rebuild is attempted: flattening it could only turn a lazy container into a
    materialized one for no gain. *)
-ArrayVector[a_ ? ArrayLazyQ] := If[ArrayRank[a] == 1, a, lazyStructuralOp[Flatten, a]]
+ArrayVector[a_ ? lazyContainerQ] := If[ArrayRank[a] == 1, a, lazyStructuralOp[Flatten, a]]
 
 (* Flattening a deferred structural tree is a reshape to rank 1, and
    Inactive[ArrayReshape] is itself an admitted structural node
@@ -88,10 +88,10 @@ ReshapeArray[a_ ? ArrayExplicitQ, dims : {___Integer ? NonNegative}] := ArrayRes
 
 ReshapeArray[a_ ? ArrayExplicitQ, dims : {___Integer ? NonNegative}, pad_] := ArrayReshape[a, dims, pad]
 
-ReshapeArray[a_ ? ArrayLazyQ, dims : {___Integer ? NonNegative}] :=
+ReshapeArray[a_ ? lazyContainerQ, dims : {___Integer ? NonNegative}] :=
     lazyStructuralOp[ArrayReshape[#, dims] &, a]
 
-ReshapeArray[a_ ? ArrayLazyQ, dims : {___Integer ? NonNegative}, pad_] :=
+ReshapeArray[a_ ? lazyContainerQ, dims : {___Integer ? NonNegative}, pad_] :=
     lazyStructuralOp[ArrayReshape[#, dims, pad] &, a]
 
 ReshapeArray[a_ ? deferredTreeQ, dims : {___Integer ? NonNegative}] :=
@@ -125,6 +125,6 @@ PadArray[a_ ? ArrayExplicitQ, spec_, padding_] := ArrayPad[a, spec, padding]
    all and PadArray came back unevaluated, which reads downstream as "not a
    container" rather than as the padded array. *)
 
-PadArray[a_ ? ArrayLazyQ, spec_] := lazyStructuralOp[ArrayPad[#, spec] &, a]
+PadArray[a_ ? lazyContainerQ, spec_] := lazyStructuralOp[ArrayPad[#, spec] &, a]
 
-PadArray[a_ ? ArrayLazyQ, spec_, padding_] := lazyStructuralOp[ArrayPad[#, spec, padding] &, a]
+PadArray[a_ ? lazyContainerQ, spec_, padding_] := lazyStructuralOp[ArrayPad[#, spec, padding] &, a]

@@ -654,3 +654,17 @@ VerificationTest[
 ]
 
 EndTestSection[]
+
+
+(* Reclassifying deferred trees into the lazy tier left ArrayConjugate with no
+   clause for them: the head is unregistered and ArraySymbolicQ no longer holds,
+   so the call came back unevaluated - and an unevaluated ArrayConjugate reads
+   downstream as a single element, exactly the failure mode the unevaluated
+   ArrayVector had. *)
+VerificationTest[
+    With[{d = Inactive[Dot][SparseArray[{{0., 1.}, {1., 0.}}], SparseArray[{1., 0.}]]},
+        {Head[ArrayConjugate[d]] =!= ArrayConjugate, Normal[ArrayConjugate[d]]}
+    ],
+    {True, {0., 1.}},
+    TestID -> "regression-conjugate-of-a-deferred-tree"
+]

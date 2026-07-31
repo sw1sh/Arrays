@@ -380,4 +380,10 @@ ArrayConjugate[a_ ? ArrayExplicitQ] := Conjugate[a]
    does not carry, is reproduced only to interpolation accuracy. *)
 ArrayConjugate[a_ ? lazyContainerQ] := lazyStructuralOp[Conjugate, a]
 
+(* A deferred tree fell through every clause once it left the symbolic tier:
+   its head is not registered and ArraySymbolicQ no longer holds, so the call
+   came back unevaluated and read downstream as one amplitude.  Conjugate is
+   not an admitted structural node, so the honest route is materialization. *)
+ArrayConjugate[a_ ? deferredTreeQ] := Conjugate[ArrayMaterialize[a]]
+
 ArrayConjugate[a_ ? ArraySymbolicQ] := Conjugate[a]

@@ -50,7 +50,7 @@ If[ MemberQ[issues[[All, "Level"]], "Error"],
     Exit[1]
 ]
 
-result = UsingFrontEnd @ Block[{nb, r},
+result = UsingFrontEnd @ Block[{nb, r, DefinitionNotebookClient`ConfirmIssuesDialog = (True &)},
     nb = NotebookOpen[nbFile, Visible -> False];
     r = DefinitionNotebookClient`SubmitRepository[nb];
     NotebookClose[nb];

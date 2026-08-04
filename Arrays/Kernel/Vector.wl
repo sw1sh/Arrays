@@ -4,7 +4,7 @@ PackageExport[ArrayVector]
 PackageExport[ReshapeArray]
 PackageExport[PadArray]
 
-ArrayVector::usage ="ArrayVector[a] flattens an explicit array container to a vector, using a raw CSR construction for a SparseArray of rank above 11; a lazy container stays lazy where its head supplies a lazy-preserving rebuild and materializes through ArrayMaterialize where it does not, as for a ParametricFunction; a deferred structural tree stays deferred, gaining an Inactive[ArrayReshape] node rather than being computed; a leafless symbolic array such as a MatrixSymbol has no elements to restructure and is left unevaluated; a rank-1 container of any tier passes through unchanged, as does scalar numeric input."
+ArrayVector::usage ="ArrayVector[a] flattens an explicit array container to a vector, using a raw CSR construction for a SparseArray of rank above 11; a lazy container stays lazy where its head supplies a lazy-preserving rebuild and materializes through ArrayMaterialize where it does not, as for a ParametricFunction; a deferred structural tree stays deferred, gaining an Inactive[ArrayReshape] node rather than being computed; a leafless symbolic array such as a MatrixSymbol has no elements to restructure and is left unevaluated; a rank-1 container of any tier passes through unchanged, as does a scalar - anything with no array structure, whether or not it is a number, since flattening one is the identity."
 
 ReshapeArray::usage = "ReshapeArray[a, dims] reshapes an explicit array container to the given dimensions, preserving the container where ArrayReshape does; a lazy container stays lazy where its head supplies a lazy-preserving rebuild and materializes through ArrayMaterialize where it does not, as for a ParametricFunction; a deferred structural tree stays deferred, gaining an Inactive[ArrayReshape] node rather than being computed; a leafless symbolic array is left unevaluated.\nReshapeArray[a, dims, pad] pads with pad when the reshape needs more elements."
 
@@ -40,7 +40,20 @@ ArrayVector[sa_SparseArray] := With[{dims = sa["Dimensions"]},
     ] /; Length[dims] > 11
 ]
 
-ArrayVector[x_ ? NumericQ] := x
+(* Flattening a SCALAR is the identity, and whether the scalar happens to be a
+   number is beside the point.  A fully contracted tensor network leaves one,
+   and it is symbolic the moment the network carries a parameter: the NumericQ
+   test covered only half of that case, so a parametrised circuit contracted to
+   a scalar came back as an inert ArrayVector[expr] and was stored downstream as
+   an amplitude.
+
+   A scalar here is something with no array structure at all - not a List, and
+   not a container of any tier.  A ragged list is neither, and stays
+   unevaluated as it did: it has a flatten, just not one this paclet promises. *)
+
+scalarQ[x_] := ! ListQ[x] && ! ArrayContainerQ[x]
+
+ArrayVector[x_ ? scalarQ] := x
 
 (* QuantityArray flattens natively and keeps its wrapper on the generic
    clause; the remaining wrappers flatten their materialized data. *)

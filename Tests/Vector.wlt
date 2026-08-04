@@ -245,3 +245,30 @@ VerificationTest[
 ]
 
 EndTestSection[]
+
+
+(* Flattening a scalar is the identity whether or not the scalar is a number.
+   A fully contracted tensor network leaves one, symbolic the moment the network
+   carries a parameter, and the NumericQ-only clause left that as an inert
+   ArrayVector[expr] which downstream stored as an amplitude. *)
+VerificationTest[
+    {
+        ArrayVector[0.5],
+        ArrayVector[Cos[vecT] - I Sin[vecT]],
+        ArrayVector[E ^ (-I vecT / 2)],
+        ArrayVector[vecSym]
+    },
+    {0.5, Cos[vecT] - I Sin[vecT], E ^ (-I vecT / 2), vecSym},
+    TestID -> "Scalar-passthrough-is-not-limited-to-numbers"
+]
+
+(* Containers and ragged lists are not scalars and keep their own routes. *)
+VerificationTest[
+    {
+        Normal @ ArrayVector[SparseArray[{{1., 2.}, {3., 4.}}]],
+        Head @ ArrayVector[MatrixSymbol["vecM", {2, 2}]],
+        Head @ ArrayVector[{{1, 2}, {3}}]
+    },
+    {{1., 2., 3., 4.}, ArrayVector, ArrayVector},
+    TestID -> "Scalar-passthrough-does-not-swallow-containers-or-ragged-lists"
+]

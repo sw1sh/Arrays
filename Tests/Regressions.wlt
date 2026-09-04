@@ -668,3 +668,15 @@ VerificationTest[
     {True, {0., 1.}},
     TestID -> "regression-conjugate-of-a-deferred-tree"
 ]
+
+(* The stored-value accessors had no clause for a deferred tree either: a
+   lazy clause that dispatches on the registry finds no head for a tree, and
+   a deferred tree is not symbolic, so the call came back unevaluated instead
+   of Missing["NotExplicit"].  The accessors ask the tier. *)
+VerificationTest[
+    With[{d = Inactive[Dot][SparseArray[{{0., 1.}, {1., 0.}}], SparseArray[{1., 0.}]]},
+        {ArrayExplicitValues[d], ArrayExplicitPositions[d], ArrayExplicitLength[d]}
+    ],
+    {Missing["NotExplicit"], Missing["NotExplicit"], Missing["NotExplicit"]},
+    TestID -> "regression-accessors-of-a-deferred-tree"
+]

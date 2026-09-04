@@ -117,6 +117,44 @@ VerificationTest[
     TestID -> "shape-dimensions-inactive-d-scalar-parameter"
 ]
 
+(* A rank-0 operand is a SCALAR FIELD, not an unknown shape: its gradient by n
+   coordinates is rank-n.  Routing this through shapeFromOperands, whose only
+   test is MemberQ[operandShapes, {}], reported {} and silently cost every
+   scalar derivative its index - which is how a covariant derivative of a
+   scalar field reaches this clause. *)
+
+VerificationTest[
+    ArrayDimensions[Inactive[D][phi, {{p1, p2}}]],
+    {2},
+    TestID -> "shape-dimensions-inactive-d-scalar-field-gradient"
+]
+
+VerificationTest[
+    ArrayDimensions[Inactive[D][phi, {{p1, p2}, 2}]],
+    {2, 2},
+    TestID -> "shape-dimensions-inactive-d-scalar-field-hessian"
+]
+
+(* The trade-off this clause accepts, pinned so it is a decision and not a
+   surprise: an operand shape of {} means "scalar" OR "no known shape", and the
+   two are not distinguishable here, so an UNKNOWN operand is read as a scalar
+   and the node reports the gradient shape rather than {}.  The scalar reading
+   is the one that carries information, and the alternative cost every real
+   scalar field its derivative index.  The result is still validated, so a
+   specification that yields no integer list gives {} quietly. *)
+
+VerificationTest[
+    ArrayDimensions[Inactive[D][{{1, 2}, {3}}, {{p1, p2}}]],
+    {2},
+    TestID -> "shape-dimensions-inactive-d-unknown-operand-reads-as-scalar"
+]
+
+VerificationTest[
+    ArrayDimensions[Inactive[D][phi, {p1, p2}]],
+    {},
+    TestID -> "shape-dimensions-inactive-d-nonlist-specification"
+]
+
 VerificationTest[
     {ArrayRank[$arr], ArrayRank[$lazy], ArrayRank[$sparse], ArrayRank[5]},
     {3, 1, 2, 0},
@@ -459,6 +497,66 @@ VerificationTest[
     ArrayDimensions[{{1, 2}, {3, 4}, {5, {6}}}],
     {},
     TestID -> "shape-fast-ragged-at-depth"
+]
+
+(* Dimensions is the whole shape only when the leaves have no shape of their
+   own.  A list of SYMBOLIC containers stops Dimensions at the list level, so
+   the fast clause has to hand such a list back to the TensorDimensions probe;
+   answering {2} for a 2 x 3 array of vectors made squareMatrixQ - and through
+   it every square-matrix constructor - disagree with TensorDimensions. *)
+
+VerificationTest[
+    ArrayDimensions[{VectorSymbol["fv", 3], VectorSymbol["fw", 3]}],
+    {2, 3},
+    TestID -> "shape-fast-list-of-symbolic-vectors"
+]
+
+VerificationTest[
+    ArrayDimensions[{MatrixSymbol["fA", {2, 3}], MatrixSymbol["fB", {2, 3}]}],
+    {2, 2, 3},
+    TestID -> "shape-fast-list-of-symbolic-matrices"
+]
+
+(* A list that MIXES a symbolic leaf with an explicit one is the same array and
+   takes the same route; the fast clause used to refuse it outright. *)
+VerificationTest[
+    ArrayDimensions[{VectorSymbol["fv", 3], {1, 2, 3}}],
+    {2, 3},
+    TestID -> "shape-fast-list-mixing-symbolic-and-explicit"
+]
+
+(* The assumption-registered spelling of the same thing, which is the form an
+   Assuming-wrapped shape check produces. *)
+VerificationTest[
+    Assuming[
+        {Element[fa, Vectors[3]], Element[fb, Vectors[3]]},
+        ArrayDimensions[{fa, fb}]
+    ],
+    {2, 3},
+    TestID -> "shape-fast-list-of-assumption-registered-vectors"
+]
+
+(* Leaves that are EXPLICIT containers keep the fast answer: a NumericArray
+   leaf is opaque to TensorDimensions too, so both routes agree on {2}. *)
+VerificationTest[
+    ArrayDimensions[{NumericArray[{1., 2.}], NumericArray[{3., 4.}]}],
+    {2},
+    TestID -> "shape-fast-list-of-numericarrays"
+]
+
+(* With no VectorSymbol, MatrixSymbol or ArraySymbol in the data and no array
+   domain in $Assumptions, a symbolic leaf is impossible and the per-leaf
+   ArraySymbolicQ scan is skipped.  The budget sits between the two paths with
+   two orders of magnitude to spare on each side: five gated calls cost
+   milliseconds, five per-leaf scans of a million leaves cost seconds. *)
+VerificationTest[
+    Block[{$Assumptions = True},
+        Module[{u = Developer`FromPackedArray[RandomReal[1, {1000, 1000}]]},
+            {ArrayDimensions[u], First[AbsoluteTiming[Do[ArrayDimensions[u], {5}]]] < 1.25}
+        ]
+    ],
+    {{1000, 1000}, True},
+    TestID -> "shape-fast-unpacked-list-skips-the-leaf-scan"
 ]
 
 EndTestSection[]

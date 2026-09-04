@@ -17,9 +17,10 @@ RelatedGuides: [Arrays]
 
 - The three tiers are ordered `"Explicit"` < `"Lazy"` < `"Symbolic"`, from the most specific to the most general: binding the parameters of a lazy container gives an explicit one, and specializing a symbolic container gives a lazy or an explicit one.
 - A container belongs to exactly one tier. <code>[ArrayTier]()[*a*]</code> gives `"Explicit"` when *a* satisfies [ArrayExplicitQ](), `"Lazy"` when it satisfies [ArrayLazyQ](), and `"Symbolic"` when it satisfies [ArraySymbolicQ]().
+- A structural tree whose leaves are all explicit containers, the deferred form a tensor-network contraction returns unactivated, is `"Lazy"`: it has a value and merely defers computing it. A tree that carries a symbolic container at any depth is `"Symbolic"`.
 - An expression that is not a supported array container gives `Missing["NotAContainer"]` rather than a tier.
 - The tier of an operation over several containers is the maximum of its operands' tiers, which [ArrayUnify]() gives as its `"Tier"` key. A result may land on a more specific tier where an operation genuinely collapses generality, but the join is the contract.
-- [ArrayCoerce]() moves a container up the tier lattice and refuses to move it down, which is materialization.
+- [ArrayCoerce]() moves a container up the tier lattice and refuses to move it down, which is materialization. The symbolic tier is not reachable by coercion: a container is symbolic because it carries a symbol, and there is nothing to turn known values into unknown ones with, so the only lift is from the explicit tier to the lazy one.
 - <code>[ArrayObject]()[*a*]["Tier"]</code> reports the same tier, and the expanded summary box shows it.
 
 ## Basic Examples
@@ -89,6 +90,16 @@ ArrayTier[state[tau]]
 
 ---
 
+The unapplied [InterpolatingFunction]() is itself a lazy container, whose elements are the unapplied component interpolants:
+
+```wl
+ArrayTier[state]
+```
+
+<!-- => "Lazy" -->
+
+---
+
 An array-valued [Piecewise]() awaits the condition that selects a branch:
 
 ```wl
@@ -103,6 +114,19 @@ A source [NetGraph]() produces its array on the one call that evaluates it:
 
 ```wl
 ArrayTier[NetGraph[{NetArrayLayer["Array" -> {{1., 2., 3.}, {4., 5., 6.}}]}, {1 -> NetPort["Output"]}]]
+```
+
+<!-- => "Lazy" -->
+
+---
+
+A deferred contraction tree whose leaves are all explicit has a value it has merely not computed:
+
+```wl
+ArrayTier[Inactive[TensorContract][
+    Inactive[TensorProduct][ArrayReshape[Range[6], {2, 3}], ArrayReshape[Range[12], {3, 4}]],
+    {{2, 3}}
+]]
 ```
 
 <!-- => "Lazy" -->
@@ -130,11 +154,11 @@ ArrayTier[Inactive[TensorProduct][MatrixSymbol["A", {2, 3}], MatrixSymbol["B", {
 
 ---
 
-A deferred contraction tree is symbolic even where all of its leaves are explicit, since it defers the computation rather than storing its result:
+One symbolic leaf at any depth makes the whole tree symbolic; here the contraction above is taken over a [MatrixSymbol]():
 
 ```wl
 ArrayTier[Inactive[TensorContract][
-    Inactive[TensorProduct][ArrayReshape[Range[6], {2, 3}], ArrayReshape[Range[12], {3, 4}]],
+    Inactive[TensorProduct][MatrixSymbol["A", {2, 3}], ArrayReshape[Range[12], {3, 4}]],
     {{2, 3}}
 ]]
 ```
@@ -176,10 +200,10 @@ ArrayUnify[{SparseArray[{{1, 2}, {3, 4}}], Function[th, {{Cos[th], -Sin[th]}, {S
 [ArrayCoerce]() lifts a container up the lattice, and the lifted container reports the tier it was lifted to:
 
 ```wl
-ArrayTier[ArrayCoerce[{{1, 2}, {3, 4}}, "Symbolic"]]
+ArrayTier[ArrayCoerce[{{1, 2}, {3, 4}}, "Lazy"]]
 ```
 
-<!-- => "Symbolic" -->
+<!-- => "Lazy" -->
 
 ## Possible Issues
 
@@ -200,3 +224,13 @@ ArrayTier[<|1 -> 1.5|>]
 ```
 
 <!-- => Missing["NotAContainer"] -->
+
+---
+
+The symbolic tier is not reachable by coercion, so asking for it is refused and the call stays unevaluated:
+
+```wl
+ArrayCoerce[{{1, 2}, {3, 4}}, "Symbolic"]
+```
+
+<!-- => ArrayCoerce::coerce message, then ArrayCoerce[{{1, 2}, {3, 4}}, "Symbolic"] unevaluated -->

@@ -17,7 +17,8 @@ RelatedGuides: [Arrays]
 
 - A tier specification is `"Explicit"`, `"Lazy"` or `"Symbolic"`; an element domain is [Integers](), [Rationals](), [Algebraics](), [Reals]() or [Complexes](); an element type is a numeric type name such as `"Real64"` or `"Integer32"`.
 - Coercion may only move up both lattices, the tier order `"Explicit"` < `"Lazy"` < `"Symbolic"` and the element order of [ArrayElementDomain]() together with the precision order of the machine widths.
-- Up the tier lattice the lift is free. An explicit container lifts to the lazy tier as a constant [Function]() of a formal parameter, materializing a container whose form is not a plain array first, and to the symbolic tier as an [Inactive]() [TensorProduct]() of one operand. Both are containers of the same shape whose materialization gives the array back.
+- Up the tier lattice the lift is free. An explicit container lifts to the lazy tier as a constant [Function]() of a formal parameter, materializing a container whose form is not a plain array first; the lift is a container of the same shape, and applying it to any argument gives the array back.
+- The symbolic tier is not reachable by coercion: a container is symbolic because it carries a symbol, and there is nothing to turn known values into unknown ones with. An explicit container asked for it is the `ArrayCoerce::coerce` refusal, and a lazy container the `ArrayCoerce::notier` refusal.
 - Coercing to the tier a container already occupies leaves it unchanged.
 - Coercing to an element domain alone changes nothing, a domain being an upper bound on the elements that a narrower container already meets.
 - Coercing to a concrete element type gives a [NumericArray]() of that type. The conversion is the kernel's, and a value that does not survive the target type is a refusal rather than a rounded value.
@@ -30,7 +31,7 @@ RelatedGuides: [Arrays]
 | `ArrayCoerce::notier` | a lazy container asked for the symbolic tier, which has no leafless form |
 | `ArrayCoerce::badspec` | a specification that names no tier, domain or element type |
 | `ArrayCoerce::nocontainer` | input that is not a supported array container |
-| `ArrayCoerce::coerce` | a legal target that this container's values do not survive |
+| `ArrayCoerce::coerce` | a legal target that this container's values do not survive, or the symbolic tier asked of an explicit container |
 
 - A lazy container reaches the symbolic tier only as an operand of a structural tree that also carries a symbolic container, which is what [ArrayUnify]() leaves it as.
 - Narrowing a symbolic container to a machine type is the `ArrayCoerce::narrow` refusal, symbolic absorption stated as a coercion: the only route to a machine type is materialization.
@@ -46,16 +47,6 @@ ArrayCoerce[{{1, 2}, {3, 4}}, "Lazy"]
 ```
 
 <!-- => Function[\[FormalT], {{1, 2}, {3, 4}}] -->
-
----
-
-Lifting it to the symbolic tier gives an inactive tensor product of one operand:
-
-```wl
-ArrayCoerce[{{1, 2}, {3, 4}}, "Symbolic"]
-```
-
-<!-- => Inactive[TensorProduct][{{1, 2}, {3, 4}}] -->
 
 ---
 
@@ -98,16 +89,6 @@ ArrayCoerce[QuantityArray[{1., 2.}, "Meters"], "Lazy"]
 ```
 
 <!-- => Function[\[FormalT], QuantityArray summary box of {1., 2.} meters] -->
-
----
-
-The symbolic lift materializes back to the array it wraps:
-
-```wl
-ArrayMaterialize[ArrayCoerce[{{1, 2}, {3, 4}}, "Symbolic"]]
-```
-
-<!-- => {{1, 2}, {3, 4}} -->
 
 ---
 
@@ -271,7 +252,17 @@ ArrayCoerce[{{t1, t2}, {t3, t4}}, "Real64"]
 
 ---
 
-A lazy container has no leafless symbolic form, and enters that tier only as an operand of a tree carrying a symbolic container:
+The symbolic tier is not reachable by coercion; an explicit container asked for it is refused and the call stays unevaluated:
+
+```wl
+ArrayCoerce[{{1, 2}, {3, 4}}, "Symbolic"]
+```
+
+<!-- => ArrayCoerce::coerce message, then ArrayCoerce[{{1, 2}, {3, 4}}, "Symbolic"] unevaluated -->
+
+---
+
+A lazy container has no leafless symbolic form either, and enters that tier only as an operand of a tree carrying a symbolic container:
 
 ```wl
 ArrayCoerce[Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[th]}}], "Symbolic"]

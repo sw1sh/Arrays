@@ -22,9 +22,9 @@ ArrayElementDomain::usage = "ArrayElementDomain[a] gives the element domain of a
 
 ArrayElementType::usage = "ArrayElementType[a] gives the concrete element type of an array container that carries one, as NumericArray, GPUArray and TabularColumn do (\"Real64\", \"Integer32\", ...); every other container gives Missing[\"NotApplicable\"] and describes its elements through ArrayElementDomain instead."
 
-ArrayUnify::usage = "ArrayUnify[{a1, a2, ...}] gives an Association describing the common representation of the given array containers: \"Tier\" is the joined tier, \"Domain\" the joined element domain, \"ElementType\" the concrete numeric type of the join where it has one, and \"Arrays\" the operands coerced to the joined tier. Widening the domain never narrows the precision, so an \"Integer64\" operand joined with a \"Real32\" one gives \"Real64\"; a symbolic operand absorbs, since narrowing it to a machine type would mean materializing it; and an operand whose domain is unknown contributes nothing to the join. An operand with no lift to the joined tier is returned unchanged, which is the lazy operand of a symbolic join: it is already a legal leaf of a symbolic tree, and materializing it is the downward move the tier join forbids."
+ArrayUnify::usage = "ArrayUnify[{a1, a2, ...}] gives an Association describing the common representation of the given array containers: \"Tier\" is the joined tier, \"Domain\" the joined element domain, \"ElementType\" the concrete numeric type of the join where it has one, and \"Arrays\" the operands coerced to the joined tier. Widening the domain never narrows the precision, so an \"Integer64\" operand joined with a \"Real32\" one gives \"Real64\"; a symbolic operand absorbs, since narrowing it to a machine type would mean materializing it; and an operand whose domain is unknown contributes nothing to the join. An operand with no lift to the joined tier is returned unchanged, which is every explicit or lazy operand of a symbolic join: the symbolic tier is not reachable by coercion, and each such operand is already a legal leaf of the symbolic tree the join builds."
 
-ArrayCoerce::usage = "ArrayCoerce[a, spec] coerces the array container a toward spec, which names a tier (\"Explicit\", \"Lazy\" or \"Symbolic\"), an element domain (Integers, Rationals, Algebraics, Reals or Complexes), an element type (\"Real64\", \"Integer32\", ...), or a list of a tier and one of those. Coercion may only move UP both lattices: an explicit container lifts to the lazy tier as a constant Function of a formal parameter, materializing a container whose form is not a plain array first, and to the symbolic tier as an inactive tensor product; a request that would move down either lattice - materializing a lazy or symbolic container, narrowing Reals to Integers, narrowing \"Real64\" to \"Real32\", or coercing a container whose element domain is unknown - is refused with a message naming both types instead of being cast silently. Coercing to a concrete element type gives a NumericArray of that type, and a value that does not survive it is a refusal rather than a rounded value. Coercing to a domain alone changes nothing, since a domain is an upper bound on the elements and a narrower container already meets a wider one."
+ArrayCoerce::usage = "ArrayCoerce[a, spec] coerces the array container a toward spec, which names a tier (\"Explicit\", \"Lazy\" or \"Symbolic\"), an element domain (Integers, Rationals, Algebraics, Reals or Complexes), an element type (\"Real64\", \"Integer32\", ...), or a list of a tier and one of those. Coercion may only move UP both lattices: an explicit container lifts to the lazy tier as a constant Function of a formal parameter, materializing a container whose form is not a plain array first. The symbolic tier is not reachable by coercion - a container is symbolic because it carries a symbol, and there is nothing to turn known values into unknown ones with - so that request is refused, as is a request that would move down either lattice: materializing a lazy or symbolic container, narrowing Reals to Integers, narrowing \"Real64\" to \"Real32\", or coercing a container whose element domain is unknown; every refusal gives a message naming both types instead of casting silently. Coercing to a concrete element type gives a NumericArray of that type, and a value that does not survive it is a refusal rather than a rounded value. Coercing to a domain alone changes nothing, since a domain is an upper bound on the elements and a narrower container already meets a wider one."
 
 
 ArrayUnify::nocontainers = "`1` is not a non-empty list of supported array containers; ArrayUnify accepts a list of expressions satisfying ArrayContainerQ."
@@ -450,11 +450,11 @@ coerceTier[a_, Automatic] := a
 
 (* The symbolic tier is not reachable by coercion.  A container is symbolic
    because it CARRIES a symbol - it has a shape and a domain and no values - and
-   there is nothing to turn known values into unknown ones with.  The lift used
-   to be Inactive[TensorProduct][a], a structural tree over an explicit leaf,
-   which the tier rules called symbolic while it computed an array on demand
-   like any other deferred tree; it is lazy, and lifting an explicit container
-   to it is the "Lazy" case below, not this one.
+   there is nothing to turn known values into unknown ones with.
+   Inactive[TensorProduct][a], a structural tree over an explicit leaf, is no
+   such lift: it computes an array on demand like any other deferred tree, so
+   it is lazy, and lifting an explicit container to it is the "Lazy" case
+   below, not this one.
 
    An operand that cannot be coerced is left as it stands, which ArrayUnify
    already does for a lazy operand of a symbolic join. *)
@@ -517,8 +517,9 @@ ArrayCoerce[a_, _] /; ! ArrayContainerQ[a] && (Message[ArrayCoerce::nocontainer,
    The joined tier and domain, plus the operands coerced to the joined tier, so
    that a mixing operation asks once and then works in one representation.  An
    operand with no lift to the joined tier is returned unchanged rather than
-   materialized: that is the lazy operand of a symbolic join, which is already a
-   legal leaf of the tree such a join builds. *)
+   materialized: that is every explicit or lazy operand of a symbolic join,
+   since the symbolic tier has no lift, and each is already a legal leaf of the
+   tree such a join builds. *)
 
 unifiedOperand[a_, tier_] := Replace[coerceTier[a, tier], _Missing :> a]
 

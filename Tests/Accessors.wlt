@@ -216,7 +216,11 @@ $materializable = {
         Inactive[TensorProduct][ArrayReshape[Range[6], {2, 3}], ArrayReshape[Range[12], {3, 4}]],
         {{2, 3}}
     ],
-    Inactive[ArrayDot][ArrayReshape[Range[6], {2, 3}], ArrayReshape[Range[12], {3, 4}], {{2, 1}}]
+    Inactive[ArrayDot][ArrayReshape[Range[6], {2, 3}], ArrayReshape[Range[12], {3, 4}], {{2, 1}}],
+    (* Every slot of the second operand is contracted away, so the residual
+       tensor product carries a rank-0 factor.  TensorProduct[x, 0] is 0
+       whatever the rank of x, and the shape has to survive that. *)
+    Inactive[TensorContract][Inactive[TensorProduct][{-1, -1, 0}, {0}], {{2}}]
 }
 
 VerificationTest[
@@ -232,6 +236,18 @@ VerificationTest[
     ],
     ConstantArray[{True, True, True}, Length[$materializable]],
     TestID -> "accessors-materialize-gives-explicit-container-of-same-shape"
+]
+
+(* A rank-0 factor of a tensor product SCALES the factors beside it, so the
+   contraction above materializes to a zero vector and not to the scalar 0; the
+   same tree with a nonzero contracted part takes the same route. *)
+VerificationTest[
+    {
+        ArrayMaterialize[Inactive[TensorContract][Inactive[TensorProduct][{-1, -1, 0}, {0}], {{2}}]],
+        ArrayMaterialize[Inactive[TensorContract][Inactive[TensorProduct][{-1, -1, 0}, {5}], {{2}}]]
+    },
+    {{0, 0, 0}, {-5, -5, 0}},
+    TestID -> "accessors-materialize-scales-by-a-fully-contracted-factor"
 ]
 
 (* A leafless symbolic container has no values, so it stands for itself. *)

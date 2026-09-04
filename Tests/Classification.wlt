@@ -631,9 +631,8 @@ VerificationTest[
    produce VALUES.  A deferred structural tree can: every leaf is explicit, so
    it is a computation that has not been run and Activate runs it - that is
    lazy.  A symbolic container cannot: it carries a symbol and has only a shape
-   and a domain.  Both used to answer ArraySymbolicQ True, which made a
-   tensor-network contraction indistinguishable from a tree over a
-   VectorSymbol. *)
+   and a domain.  Were both to answer ArraySymbolicQ True, a tensor-network
+   contraction would be indistinguishable from a tree over a VectorSymbol. *)
 
 $mixSparse = SparseArray[{{1., 2.}, {3., 4.}}]
 $mixLazy = Piecewise[{{{{1., 2.}, {3., 4.}}, mixZ < 0}}, {{5., 6.}, {7., 8.}}]

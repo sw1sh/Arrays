@@ -36,11 +36,18 @@ toSparseArray[a_ ? wrapperExplicitQ] := SparseArray[ArrayMaterialize[a]]
 toSparseArray[a_] := SparseArray[a]
 
 
+(* The Missing clauses ask the TIER, not the registry.  A deferred structural
+   tree is lazy with no registered head, and its elements are as unstored as
+   those of any registered lazy container, so it answers here rather than
+   falling through every clause to an unevaluated call.  ArrayLazyQ is the
+   registry probe on a registered head and never evaluates a Function leaf of
+   a tree, so the tier test is no more expensive than the registry test. *)
+
 ArrayExplicitValues[a_SparseArray] := a["ExplicitValues"]
 
 ArrayExplicitValues[a_ ? ArrayExplicitQ] := If[ZeroArrayQ[a], {}, toSparseArray[a]["ExplicitValues"]]
 
-ArrayExplicitValues[a_ ? lazyContainerQ] := Missing["NotExplicit"]
+ArrayExplicitValues[a_ ? ArrayLazyQ] := Missing["NotExplicit"]
 
 ArrayExplicitValues[a_ ? ArraySymbolicQ] := Missing["NotExplicit"]
 
@@ -49,7 +56,7 @@ ArrayExplicitPositions[a_SparseArray] := a["ExplicitPositions"]
 
 ArrayExplicitPositions[a_ ? ArrayExplicitQ] := If[ZeroArrayQ[a], {}, toSparseArray[a]["ExplicitPositions"]]
 
-ArrayExplicitPositions[a_ ? lazyContainerQ] := Missing["NotExplicit"]
+ArrayExplicitPositions[a_ ? ArrayLazyQ] := Missing["NotExplicit"]
 
 ArrayExplicitPositions[a_ ? ArraySymbolicQ] := Missing["NotExplicit"]
 
@@ -58,7 +65,7 @@ ArrayExplicitLength[a_SparseArray] := a["ExplicitLength"]
 
 ArrayExplicitLength[a_ ? ArrayExplicitQ] := If[ZeroArrayQ[a], 0, toSparseArray[a]["ExplicitLength"]]
 
-ArrayExplicitLength[a_ ? lazyContainerQ] := Missing["NotExplicit"]
+ArrayExplicitLength[a_ ? ArrayLazyQ] := Missing["NotExplicit"]
 
 ArrayExplicitLength[a_ ? ArraySymbolicQ] := Missing["NotExplicit"]
 
@@ -139,13 +146,62 @@ ArrayMaterialize[a_ ? lazyContainerQ] := lazyMaterialize[a]
    restricted pass does not help, because it is the ORDER and not the vocabulary
    that decides this - it measures the same 125MB as a bare Activate.
 
-   This is what TensorNetworks does in ActivateTensors, and for this reason. *)
+   This is what TensorNetworks does in ActivateTensors, and for this reason.
+
+   Between the two passes the SCALE-OUT below repairs what the contraction pass
+   leaves behind: a contraction that consumes every slot of one operand turns
+   that operand into a rank-0 factor of the residual product, and
+   TensorProduct[x, 0] is 0 whatever the rank of x, so the free operands'
+   dimensions would be thrown away and a zero ARRAY would come back as the
+   scalar 0.  Scaling is what a rank-0 factor of a tensor product means, and
+   Times threads over an array, so the repair is to take the scalars out and
+   multiply them back in. *)
 ArrayMaterialize[a_ ? deferredTreeQ] := Activate[
-    Activate[unwrapArrayObjects[a], ArrayContract | TensorContract],
+    deferredScaleOut @ Activate[unwrapArrayObjects[a], ArrayContract | TensorContract],
     $inactiveNodeHeads
 ]
 
 ArrayMaterialize[a_ ? ArraySymbolicQ] := a
+
+
+(* The walk descends through the NODE heads only, and for the reason
+   $inactiveNodeHeads exists at all: an Inactive expression a LEAF carries as
+   data is not a node of the tree, and rebuilding one would traverse whatever it
+   holds.  Rebuilding a leaf is not merely pointless, it is destructive - a
+   traversal of a packed array or a SparseArray hands back an ordinary nested
+   list - so the leaf clause returns the leaf itself, untouched.
+
+   Arguments are scaled before the node above them, so a nested product is
+   already repaired when the product containing it is examined.  A node that
+   mixes no ranks is left exactly as it stands: an all-scalar product IS a
+   product of scalars, and one with no scalar factor has nothing to take out, so
+   the rewrite costs a shape lookup per factor and changes nothing else.  Where
+   it does fire, activating the remaining product is the very work the outer
+   pass would have done. *)
+
+deferredScaleNodeQ[Inactive[h_][___]] := MatchQ[h, $inactiveNodeHeads]
+
+deferredScaleNodeQ[_] := False
+
+deferredScaleOut[node_ ? deferredScaleNodeQ] :=
+    With[{scaled = Head[node] @@ Map[deferredScaleOut, List @@ node]},
+        If[MatchQ[scaled, Inactive[TensorProduct][__]], deferredScaleProduct[scaled], scaled]
+    ]
+
+deferredScaleOut[leaf_] := leaf
+
+deferredScaleProduct[node : Inactive[TensorProduct][args__]] :=
+    With[
+        {
+            scalars = Select[{args}, ArrayDimensions[#] === {} &],
+            rest = Select[{args}, ArrayDimensions[#] =!= {} &]
+        },
+        If[ scalars === {} || rest === {},
+            node,
+            Activate[Inactive[TensorProduct] @@ scalars, $inactiveNodeHeads] *
+                Activate[Inactive[TensorProduct] @@ rest, $inactiveNodeHeads]
+        ]
+    ]
 
 
 (* The least conversion that makes native arithmetic work.  A container that

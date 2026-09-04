@@ -22,7 +22,7 @@ RelatedGuides: [Arrays]
 - Widening the domain never narrows the precision: the domain and the precision of the join are taken independently, so an `"Integer64"` operand joined with a `"Real32"` one gives `"Real64"` rather than `"Real32"`.
 - A symbolic operand absorbs: narrowing it to a machine type would mean materializing it, which the tier join forbids, so a join carrying one has a domain and no `"ElementType"`. The domains still join, so a complex explicit operand widens a symbolic real one.
 - An operand whose domain is unknown contributes nothing to the join, including every operand of the lazy tier. Only a join in which every operand is unknown has an unknown `"Domain"`.
-- An operand with no lift to the joined tier is returned unchanged in `"Arrays"`. That is the lazy operand of a symbolic join: it is already a legal leaf of a symbolic tree, and materializing it is the downward move the tier join forbids.
+- An operand with no lift to the joined tier is returned unchanged in `"Arrays"`. That is every explicit or lazy operand of a symbolic join: the symbolic tier is not reachable by coercion, and each such operand is already a legal leaf of the symbolic tree the join builds.
 - [ArrayContract]() over a list of containers applies these joins, giving a result whose tier is the joined tier.
 - Input that is not a non-empty list of expressions satisfying [ArrayContainerQ]() gives an `ArrayUnify::nocontainers` message and stays unevaluated.
 
@@ -154,17 +154,17 @@ ArrayUnify[{{{1, 2}, {3, 4}}, Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[t
 
 ---
 
-An explicit operand of a symbolic join is lifted to an inactive tensor product of one operand:
+An explicit operand of a symbolic join is returned unchanged, the symbolic tier having no lift; it is already a legal leaf of the tree such a join builds:
 
 ```wl
 ArrayUnify[{{{1, 2}, {3, 4}}, MatrixSymbol["Mr", {2, 2}, Reals]}]["Arrays"]
 ```
 
-<!-- => {Inactive[TensorProduct][{{1, 2}, {3, 4}}], MatrixSymbol["Mr", {2, 2}, Reals]} -->
+<!-- => {{{1, 2}, {3, 4}}, MatrixSymbol["Mr", {2, 2}, Reals]} -->
 
 ---
 
-A lazy operand of a symbolic join is returned unchanged, being already a legal leaf of the tree such a join builds:
+A lazy operand of a symbolic join is returned unchanged on the same ground:
 
 ```wl
 ArrayUnify[{Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[th]}}], MatrixSymbol["Mr", {2, 2}, Reals]}]["Arrays"]

@@ -89,8 +89,43 @@ ArrayDimensions[t_] := Quiet[Check[Replace[TensorDimensions[t], Except[_List] :>
 
 ArrayDimensions[a_SparseArray] := Dimensions[a]
 
+(* The fast path answers from Dimensions only where Dimensions is the WHOLE
+   shape.  It is not, when a leaf is itself a symbolic container: Dimensions
+   stops at the list level and reports {2} for {VectorSymbol["v", {3}],
+   VectorSymbol["w", {3}]}, where the array is 2 x 3 and TensorDimensions says
+   so.  The same list written with the vectors registered in $Assumptions reads
+   the same way, which is the form an Assuming-wrapped shape check produces.
+   Such a list therefore falls through to the probe above rather than being
+   answered from Dimensions, and so does a list that MIXES a symbolic leaf with
+   an explicit one.
+
+   Rectangularity is still tested separately and still comes first: a ragged
+   list has to reach the probe (which quietly gives {}), and ArrayQ with a leaf
+   test admits one - it reads {{1, 2}, {3}} as a depth-1 array whose leaves are
+   lists.  The leaf scan runs only once rectangularity holds, and never for a
+   packed array, which is the bulk of the traffic and short-circuits first.
+
+   The leaf scan itself is gated on whether a symbolic leaf is POSSIBLE.  A
+   symbolic leaf has exactly two roots: a VectorSymbol, MatrixSymbol or
+   ArraySymbol expression in the data, or a symbol registered under Vectors,
+   Matrices or Arrays in $Assumptions - a structural tree qualifies only by
+   containing one of the two.  Both roots are visible to a C-speed FreeQ,
+   where the scan pays a full ArraySymbolicQ dispatch per leaf: three orders
+   of magnitude on a large unpacked list of exact or symbolic entries, which
+   can never pack and pays it on every call. *)
+
+symbolicLeafFreeQ[a_] :=
+    FreeQ[assumptionElements[], Vectors | Matrices | Arrays] &&
+        FreeQ[a, VectorSymbol | MatrixSymbol | ArraySymbol]
+
 ArrayDimensions[a_List] := With[{dims = Dimensions[a]},
-    If[Developer`PackedArrayQ[a] || ArrayQ[a, Length[dims]], dims, {}]
+    If[
+        Developer`PackedArrayQ[a] ||
+            ArrayQ[a, Length[dims]] &&
+                (symbolicLeafFreeQ[a] || ArrayQ[a, Length[dims], ! ArraySymbolicQ[#] &]),
+        dims,
+        Quiet[Check[Replace[TensorDimensions[a], Except[_List] :> {}], {}]]
+    ]
 ]
 
 (* TensorDimensions does not handle NumericArray *)
@@ -158,9 +193,19 @@ shapeFromOperands[operandShapes_List, dims_] := If[
     Quiet[Check[Replace[dims, Except[{___Integer}] :> {}], {}]]
 ]
 
-ArrayDimensions[Inactive[D][t_, {d_List, n : _Integer ? NonNegative : 1}]] := With[{dims = ArrayDimensions[t]},
-    shapeFromOperands[{dims}, Join[dims, ConstantArray[Length[d], n]]]
-]
+(* Inactive[D] is the THIRD clause that handles a rank-0 operand itself rather
+   than through shapeFromOperands, for the same reason Inactive[TensorProduct]
+   and Plus do: {} is the operand shape that produces the MOST structure here,
+   not the least.  Differentiating a SCALAR field by a coordinate list of length
+   n gives a rank-n gradient, so the shape of the node is {n} exactly when the
+   operand has no dimensions of its own - and routing that through
+   shapeFromOperands, whose only test is MemberQ[operandShapes, {}], reported {}
+   for every gradient of a scalar and silently cost the derivative its index. *)
+ArrayDimensions[Inactive[D][t_, {d_List, n : _Integer ? NonNegative : 1}]] :=
+    Quiet[Check[
+        Replace[Join[ArrayDimensions[t], ConstantArray[Length[d], n]], Except[{___Integer}] :> {}],
+        {}
+    ]]
 
 ArrayDimensions[Inactive[D][t_, __]] := ArrayDimensions[t]
 

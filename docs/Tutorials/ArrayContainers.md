@@ -184,7 +184,7 @@ ArrayExplicitValues[containers[[3]]]
 
 ## The Lazy Tier
 
-A lazy container is an inert array-valued expression whose head is registered in the tier: the shape is known from the head, but the elements come into existence only when the expression is evaluated. The registered heads are an array-valued [InterpolatingFunction]() application, a fully applied [ParametricFunction](), an unapplied array-valued [Function](), an array-valued [Piecewise](), and a source [NetGraph]() or [NetChain](). The canonical example is an array-valued [InterpolatingFunction]() applied to a symbolic time.
+A lazy container is an array-valued expression awaiting its parameters, its head registered in the tier: the shape is known from the head, but the elements come into existence only when the parameters arrive. The tier holds inert applications and unapplied forms alike. The registered heads are an array-valued [InterpolatingFunction](), applied to a symbolic argument or bare over a single input coordinate, a fully applied [ParametricFunction](), an unapplied array-valued [Function](), an array-valued [Piecewise](), and a source [NetGraph]() or [NetChain](). A structural tree whose leaves are all explicit containers, the deferred form a tensor-network contraction returns unactivated, belongs to this tier as well: it has no registered head, but it has a value and merely defers computing it. The first example is an array-valued [InterpolatingFunction]() applied to a symbolic time.
 
 Solve a differential equation for a vector-valued function, giving an [InterpolatingFunction]() with vector output:
 
@@ -281,6 +281,30 @@ ArrayLazyQ[chopped]
 ```
 
 <!-- => True -->
+
+An [InterpolatingFunction]() needs no argument to enter the tier: over a single input coordinate, the bare vector-valued object is itself a lazy container:
+
+```wl
+ArrayLazyQ[sol]
+```
+
+<!-- => True -->
+
+Materializing the bare object gives its unapplied component interpolants, one scalar-valued [InterpolatingFunction]() per element:
+
+```wl
+ArrayMaterialize[sol]
+```
+
+<!-- => {InterpolatingFunction[{{0., 10.}}, ...], InterpolatingFunction[{{0., 10.}}, ...]} -->
+
+Evaluated at a numeric time, the first component interpolant reproduces the first entry of sol[0.5] shown above to within the interpolation error:
+
+```wl
+ArrayMaterialize[sol][[1]][0.5]
+```
+
+<!-- => 0.877581 -->
 
 Each head brings its own shape route and its own materialization. An unapplied [Function]() is a container as it stands, since applying it would evaluate it:
 
@@ -444,7 +468,7 @@ ArrayDimensions[a]
 
 <!-- => {2, 2} -->
 
-Membership in the tier is having a shape and no addressable elements, not having no value, and a structural tree over explicit arrays qualifies: it has a value and merely defers computing it. This is the form a tensor-network contraction returns unactivated:
+Membership in the tier is carrying a symbol, not lacking stored elements. A structural tree over explicit arrays, the form a tensor-network contraction returns unactivated, carries none and is not symbolic:
 
 ```wl
 tree = Inactive[TensorContract][
@@ -452,6 +476,14 @@ tree = Inactive[TensorContract][
     {{2, 3}}
 ];
 ArraySymbolicQ[tree]
+```
+
+<!-- => False -->
+
+It has a value and merely defers computing it, which is the lazy tier:
+
+```wl
+ArrayLazyQ[tree]
 ```
 
 <!-- => True -->

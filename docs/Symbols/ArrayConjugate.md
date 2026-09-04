@@ -18,7 +18,7 @@ RelatedGuides: [Arrays]
 - Containers with a native [Conjugate]() are preserved: a [SparseArray]() stays sparse, a packed array stays packed, a structured array such as [SymmetrizedArray]() stays a structured atom, and a [QuantityArray]() keeps its wrapper.
 - [Conjugate]() is not natively supported on [NumericArray](), so a [NumericArray]() converts through [Normal]() and re-wraps, staying a [NumericArray]().
 - The storage wrappers ([Tabular](), [Dataset](), [EventSeries](), ...) conjugate their materialized data, losing the wrapper.
-- A lazy container conjugates through its own head where that head has a rebuild, and stays lazy: an array-valued [InterpolatingFunction]() application conjugates its value grid, an unapplied [Function]() conjugates its body, and an array-valued [Piecewise]() conjugates its branch values.
+- A lazy container conjugates through its own head where that head has a rebuild, and stays lazy: an array-valued [InterpolatingFunction](), bare or applied, conjugates its value grid and reinterpolates, an unapplied [Function]() conjugates its body, and an array-valued [Piecewise]() conjugates its branch values.
 - A lazy head with no such rebuild, such as a [ParametricFunction](), materializes to its per-scalar expansion before conjugating, and the result is no longer a lazy container.
 - Symbolic containers stay in unevaluated [Conjugate]() form.
 
@@ -146,6 +146,22 @@ Conjugate[if[0.5]]
 ```
 
 <!-- => {0.8775824340095093, -0.479425447892118} -->
+
+The bare function conjugates the same grid and stays an unapplied [InterpolatingFunction]():
+
+```wl
+conjugatedBare = ArrayConjugate[if]
+```
+
+<!-- => InterpolatingFunction[{{0., 1.}}, <>], the conjugated interpolation unapplied -->
+
+Applying it gives the conjugated values:
+
+```wl
+conjugatedBare[0.5]
+```
+
+<!-- => {0.8775811345067771, -0.47942470176036955} -->
 
 ---
 

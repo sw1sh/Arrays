@@ -17,8 +17,8 @@ RelatedGuides: [Arrays]
 
 - [ArrayContainerQ]() is the top-level admission predicate of the container hierarchy: it is equivalent to <code>[ArrayExplicitQ]()[*a*] || [ArrayLazyQ]()[*a*] || [ArraySymbolicQ]()[*a*]</code>.
 - Explicit containers store their elements: `SparseArray`, packed or plain `List` arrays, `NumericArray`, structured arrays such as `SymmetrizedArray`, and the wrapper containers `QuantityArray`, `TabularColumn`, `Tabular`, `Dataset`, `ByteArray`, `EventSeries` and `DataStructure` array stores.
-- Lazy containers are inert array-valued expressions whose head is registered in the lazy tier: an array-valued [InterpolatingFunction]() application, a fully applied array-valued [ParametricFunction](), an unapplied array-valued [Function](), an array-valued [Piecewise](), and a source [NetGraph]() or [NetChain]().
-- Symbolic containers are `VectorSymbol`, `MatrixSymbol` and `ArraySymbol` objects, atomic symbols registered in `$Assumptions` as elements of `Vectors`, `Matrices` or `Arrays`, and structural trees over array containers, including the deferred contraction tree a tensor-network contraction returns unactivated.
+- Lazy containers are inert array-valued expressions whose head is registered in the lazy tier: an array-valued [InterpolatingFunction](), applied to a non-numeric argument or unapplied over a single input coordinate, a fully applied array-valued [ParametricFunction](), an unapplied array-valued [Function](), an array-valued [Piecewise](), and a source [NetGraph]() or [NetChain](). A scalar-valued [InterpolatingFunction]() is not a container in either form. A deferred structural tree, one whose leaves are all explicit containers, the form a tensor-network contraction returns unactivated, is a lazy container as well: it has no registered head, but it has a value and merely defers computing it.
+- Symbolic containers are `VectorSymbol`, `MatrixSymbol` and `ArraySymbol` objects, atomic symbols registered in `$Assumptions` as elements of `Vectors`, `Matrices` or `Arrays`, and structural trees that carry a symbolic container at any depth.
 - Recognizing an unapplied [Function]() evaluates its body, since its shape comes from a probe; an [ArrayDeclareShape]() declaration is consulted first and skips the probes.
 - Wrapper containers are admitted under a shape-based criterion: the shape is introspectable without materializing and a materialization path exists; whether the container also computes natively is a separate capability flag, [ArrayComputeNativeQ](), not an admission gate.
 - Every container answers [ArrayDimensions]() and [ArrayRank]() without materializing and has an [ArrayMaterialize]() route.
@@ -162,6 +162,16 @@ ArrayContainerQ[v[tau]]
 
 ---
 
+The unapplied [InterpolatingFunction]() is itself a lazy container, whose elements are the unapplied component interpolants:
+
+```wl
+ArrayContainerQ[v]
+```
+
+<!-- => True -->
+
+---
+
 An unapplied array-valued [Function]() is a lazy container as it stands:
 
 ```wl
@@ -200,6 +210,21 @@ ArrayContainerQ[NetGraph[{ElementwiseLayer[Tanh]}, {1 -> NetPort["Output"]}, "In
 
 <!-- => False -->
 
+---
+
+A deferred contraction tree over explicit matrices is a lazy container as well, having a value it has merely not computed:
+
+```wl
+ArrayContainerQ[
+    Inactive[TensorContract][
+        Inactive[TensorProduct][ArrayReshape[Range[6], {2, 3}], ArrayReshape[Range[12], {3, 4}]],
+        {{2, 3}}
+    ]
+]
+```
+
+<!-- => True -->
+
 ### Symbolic containers
 
 A `MatrixSymbol` is a container:
@@ -214,19 +239,6 @@ An atomic symbol registered in `$Assumptions` is a container too:
 
 ```wl
 Block[{$Assumptions = {Element[a, Matrices[{2, 2}]]}}, ArrayContainerQ[a]]
-```
-
-<!-- => True -->
-
-A deferred contraction tree over explicit matrices is a container of the same tier:
-
-```wl
-ArrayContainerQ[
-    Inactive[TensorContract][
-        Inactive[TensorProduct][ArrayReshape[Range[6], {2, 3}], ArrayReshape[Range[12], {3, 4}]],
-        {{2, 3}}
-    ]
-]
 ```
 
 <!-- => True -->

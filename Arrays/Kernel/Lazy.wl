@@ -257,19 +257,42 @@ ArrayDeclareShape[expr_, dims_] /; MatchQ[dims, {__Integer ? Positive} | None] &
 
 (* === InterpolatingFunction: the reference implementation ===
 
-   Shape is free from Head[expr]["OutputDimensions"]; the applied form is inert
-   on any non-numeric argument (the trigger is NumericQ, so Pi and 1/2 do NOT
-   stay lazy - a documented contract, not a bug); one substitution is one packed
-   whole-array evaluation.  A derivative ifn' is itself an InterpolatingFunction
-   in 15.0, so Derivative[__][ifn][t] never survives as an inert form and needs
-   no separate recognition pattern. *)
+   Shape is free from the object's own "OutputDimensions" property, on the bare
+   form and the applied form alike; a scalar-valued interpolant answers {} and
+   is not a container in either form.  The applied form ifn[t] is inert on any
+   non-numeric argument (the trigger is NumericQ, so Pi and 1/2 do NOT stay
+   lazy - a documented contract, not a bug), and one substitution is one packed
+   whole-array evaluation.  The BARE form ifn is inert with nothing to
+   evaluate, so no argument condition applies; like an unapplied Function, it
+   is a container whose elements are unapplied scalar forms of itself.  A
+   derivative ifn' is itself an InterpolatingFunction in 15.0, so the bare and
+   the applied derivative are both admitted with no separate recognition
+   pattern, and Derivative[__][ifn][t] never survives as an inert form.
+
+   The bare form is admitted exactly where the per-component reconstruction
+   below can expand it: a single input coordinate, whose grid the component
+   interpolants are rebuilt over.  A MULTIVARIATE bare object is not a
+   container - the reconstruction reads a single-coordinate grid, and the
+   Indexed default is no path for an unapplied form, since an Indexed of a bare
+   function never substitutes to a value.  The multivariate APPLIED form is
+   admitted on exactly that ground: its Indexed elements substitute to values
+   the moment the arguments do. *)
+
+interpolatingBareQ[f_InterpolatingFunction] := MatchQ[f["OutputDimensions"], {__Integer ? Positive}] && Length[f["Domain"]] === 1
+
+interpolatingBareQ[_] := False
+
 
 interpolatingContainerQ[(f_InterpolatingFunction)[args__]] := f["OutputDimensions"] =!= {} && ! AllTrue[{args}, NumericQ]
+
+interpolatingContainerQ[f_InterpolatingFunction] := interpolatingBareQ[f]
 
 interpolatingContainerQ[_] := False
 
 
 interpolatingDimensions[(f_InterpolatingFunction)[__]] := Replace[f["OutputDimensions"], Except[_List] :> {}]
+
+interpolatingDimensions[f_InterpolatingFunction] := Replace[f["OutputDimensions"], Except[_List] :> {}]
 
 interpolatingDimensions[_] := {}
 
@@ -279,6 +302,19 @@ interpolatingDimensions[_] := {}
 
 interpolatingMaterialize[(f_InterpolatingFunction)[parameter_]] := Map[
     Interpolation[Thread[{f["Grid"], #}], InterpolationOrder -> f["InterpolationOrder"]][parameter] &,
+    Transpose[f["ValuesOnGrid"], InversePermutation[Cycles[{Range[Length[f["OutputDimensions"]] + 1]}]]],
+    {-2}
+]
+
+(* The bare form expands to the component interpolants themselves, UNAPPLIED:
+   the same grid transpose and reinterpolation as above, minus the parameter
+   application, so every element is a scalar-valued interpolant over the same
+   grid.  Reinterpolation from the value grid reproduces an NDSolve-produced
+   interpolant, whose Hermite derivative data the grid does not carry, to
+   interpolation accuracy between the grid points and exactly at them. *)
+
+interpolatingMaterialize[f_InterpolatingFunction ? interpolatingBareQ] := Map[
+    Interpolation[Thread[{f["Grid"], #}], InterpolationOrder -> f["InterpolationOrder"]] &,
     Transpose[f["ValuesOnGrid"], InversePermutation[Cycles[{Range[Length[f["OutputDimensions"]] + 1]}]]],
     {-2}
 ]
@@ -299,13 +335,43 @@ interpolatingRebuild[g_, (f_InterpolatingFunction)[parameter_]] := Module[{value
     ]
 ]
 
+(* The bare rebuild is the same grid remap with no application at the end: the
+   container is unapplied, so what the rebuild hands back is too. *)
+
+interpolatingRebuild[g_, f_InterpolatingFunction ? interpolatingBareQ] := Module[{values = Quiet[Map[g, f["ValuesOnGrid"]]]},
+    If[ ArrayQ[values, _, NumericQ],
+        Interpolation[Thread[{f["Grid"], values}], InterpolationOrder -> f["InterpolationOrder"]],
+        Missing["NotRebuildable"]
+    ]
+]
+
 interpolatingRebuild[_, _] := Missing["NotRebuildable"]
+
+
+(* Substitution never enters the object.  An InterpolatingFunction is not an
+   atom: its grid and its value data are ordinary parts, so a plain ReplaceAll
+   descends into them, and a rule keyed on a number the grid happens to contain
+   rewrites a coordinate or a value and hands back an object that still passes
+   ArrayLazyQ and interpolates wrongly, with no message.  The bare form binds
+   its parameter positionally and carries no free symbol, so rules have nothing
+   to reach and it is returned as it stands.  The applied form substitutes in
+   its argument positions only, where its free symbols live; applying the
+   object to the substituted arguments is then what turns a numeric
+   substitution into the one whole-array evaluation the tier promises, and
+   leaves a symbolic one inert. *)
+
+interpolatingSubstitute[f_InterpolatingFunction, _] := f
+
+interpolatingSubstitute[(f_InterpolatingFunction)[args__], rules_] := f @@ scopedReplaceAll[{args}, rules]
+
+interpolatingSubstitute[expr_, rules_] := scopedReplaceAll[expr, rules]
 
 
 RegisterLazyHead[InterpolatingFunction, <|
     "ContainerQ" -> interpolatingContainerQ,
     "Dimensions" -> interpolatingDimensions,
     "Materialize" -> interpolatingMaterialize,
+    "Substitute" -> interpolatingSubstitute,
     "Rebuild" -> interpolatingRebuild
 |>]
 
@@ -316,12 +382,18 @@ RegisterLazyHead[InterpolatingFunction, <|
    and the fully applied pf[params][t] - and only the LAST is an array
    container.  The criterion is the one the whole paclet is written against: a
    shape that is introspectable without materializing AND a materialization
-   path.  Substituting every parameter of pf[params][t] is one whole-array solve
-   and interpolation evaluation returning a packed array; substituting every
-   parameter of pf[params] returns an InterpolatingFunction, which is a
-   function, not an array, and the bare pf has nothing bound at all.  This is
-   exactly why the bare InterpolatingFunction is not a container either while
-   ifn[t] is, so the two heads stay consistent.  ArrayObject's Kind is derived
+   path.  Substituting every parameter of pf[params][t] is one whole-array
+   solve and interpolation evaluation returning a packed array, and its Indexed
+   expansion is sound on the same ground - every element substitutes to a value
+   once the arguments do.  The other two arities fail the materialization half
+   on their own terms.  A ParametricFunction carries equations, not a value
+   grid: the grid transpose and reinterpolation that expand a bare
+   InterpolatingFunction restructure data the object already holds, and pf and
+   pf[params] hold no such data - their components exist only on the far side
+   of a solve, and an expansion that must run the solver to produce its first
+   element is the evaluation the inert form defers, not a materialization of
+   it.  The Indexed default is no path for them either: an Indexed of an
+   unapplied form never substitutes to a value.  ArrayObject's Kind is derived
    from the head chain, so all three arities report "ParametricFunction"; only
    the applied one is admitted, and the other two are declined by
    ArrayContainerQ with the usual message.

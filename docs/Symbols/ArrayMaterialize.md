@@ -21,6 +21,7 @@ RelatedGuides: [Arrays]
 - An [EventSeries]() materializes as [Normal]() of its `"Values"` column. The time index is separate metadata, recoverable for a rebuild from <code>*a*["Times"]</code>.
 - A [DataStructure]() array store (`"DynamicArray"` or `"FixedArray"`) materializes as an immediate packed snapshot of its elements: the handles have reference semantics, with copies aliasing the same store, so the snapshot is immune to later mutation of the source handle.
 - A lazy array-valued [InterpolatingFunction]() application expands per scalar: each component becomes its own scalar interpolating function applied to the parameter.
+- A bare array-valued [InterpolatingFunction]() with a single input coordinate expands to the component interpolations themselves, unapplied: the container is unapplied, so its elements are unapplied too.
 - An array-valued [Piecewise]() threads its branch structure through every position, giving an array of scalar [Piecewise]() expressions that carry the same conditions.
 - An unapplied [Function]() gives an array of scalar [Function]() expressions of the same parameters: the container is unapplied, so its elements are unapplied too. Where the body is an explicit array of the container shape the body is mapped over; where it is not, as for a shape declared with [ArrayDeclareShape](), each element wraps an [Indexed]() of the body instead.
 - A source [NetGraph]() or [NetChain]() materializes as <code>*net*[]</code>, the one call that evaluates it.
@@ -154,6 +155,22 @@ f[0.5]
 ```
 
 <!-- => {0.8775824340095093, -0.479425447892118} -->
+
+The bare function materializes to the component interpolations themselves, unapplied:
+
+```wl
+ArrayMaterialize[f]
+```
+
+<!-- => {InterpolatingFunction[{{0., 1.}}, <>], InterpolatingFunction[{{0., 1.}}, <>]} -->
+
+Applying each component gives the same values as substituting into the applied expansion:
+
+```wl
+#[0.5] & /@ ArrayMaterialize[f]
+```
+
+<!-- => {0.8775811345067771, -0.47942470176036955} -->
 
 ---
 

@@ -16,6 +16,11 @@ $if = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t,
 $lazy = $if[tau]
 $scalarIf = NDSolveValue[{u'[t] == - u[t], u[0] == 1.}, u, {t, 0, 1}]
 
+(* A vector-valued interpolant over TWO input coordinates: array-valued, but
+   with no single-coordinate grid for the per-component reconstruction to
+   read, so only its applied form is a container. *)
+$mvIf = Interpolation[Flatten[Table[{{x, y}, {x + y, x - y}}, {x, 0., 1., .25}, {y, 0., 1., .25}], 1]]
+
 (* Lazy-tier fixtures for the heads admitted alongside InterpolatingFunction.
    The parametric one is a real ParametricNDSolveValue, so the probe solve, the
    parameter cache and the substitution all run against the kernel object. *)
@@ -73,6 +78,40 @@ VerificationTest[
     TestID -> "classification-lazy-interpolatingfunction"
 ]
 
+(* The BARE array-valued InterpolatingFunction is a lazy container, exactly
+   parallel to the unapplied Function: the object is inert with nothing to
+   evaluate, its shape reads off "OutputDimensions" with no probe, and its
+   materialization is the array of its unapplied component interpolants. *)
+VerificationTest[
+    Through[{ArrayContainerQ, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ}[$if]],
+    {True, False, True, False},
+    TestID -> "classification-bare-interpolatingfunction"
+]
+
+VerificationTest[
+    ArrayTier[$if],
+    "Lazy",
+    TestID -> "classification-bare-interpolatingfunction-tier"
+]
+
+(* A derivative ifn' is itself an InterpolatingFunction with the same output
+   shape, so it is admitted by the same clauses. *)
+VerificationTest[
+    {ArrayLazyQ[$if'], ArrayDimensions[$if']},
+    {True, {2}},
+    TestID -> "classification-bare-interpolatingfunction-derivative"
+]
+
+(* A multivariate bare interpolant has no per-component reconstruction over
+   its grid, and an Indexed of an unapplied form never substitutes to a value,
+   so only its APPLIED form - whose Indexed elements do substitute once the
+   arguments are bound - is admitted. *)
+VerificationTest[
+    {ArrayContainerQ[$mvIf], ArrayLazyQ[$mvIf], ArrayLazyQ[$mvIf[sx, sy]], ArrayDimensions[$mvIf[sx, sy]]},
+    {False, False, True, {2}},
+    TestID -> "classification-bare-multivariate-interpolatingfunction-declined"
+]
+
 VerificationTest[
     {ArrayExplicitQ[$if[0.5]], ArrayLazyQ[$if[0.5]]},
     {True, False},
@@ -83,6 +122,14 @@ VerificationTest[
     ArrayLazyQ[$scalarIf[tau]],
     False,
     TestID -> "classification-scalar-interpolatingfunction-not-lazy"
+]
+
+(* A scalar-valued interpolant answers {} for its output shape, so its bare
+   form is no more a container than its applied form is. *)
+VerificationTest[
+    {ArrayContainerQ[$scalarIf], ArrayLazyQ[$scalarIf], ArrayTier[$scalarIf]},
+    {False, False, Missing["NotAContainer"]},
+    TestID -> "classification-scalar-interpolatingfunction-bare-not-container"
 ]
 
 VerificationTest[
@@ -258,11 +305,11 @@ EndTestSection[]
 BeginTestSection["classification - admitted lazy heads"]
 
 (* ParametricFunction: only the FULLY APPLIED form pf[params][t] is an array
-   container.  Substituting every parameter of pf[params] gives an
-   InterpolatingFunction - a function, not an array - and the bare object has
-   nothing bound at all, so neither has a materialization to an array.  This is
-   the same line the reference head draws between ifn (declined) and ifn[t]
-   (admitted). *)
+   container.  A ParametricFunction carries equations, not a value grid, so the
+   per-component reconstruction that expands a bare InterpolatingFunction has
+   nothing to read here: components of pf or pf[params] exist only on the far
+   side of a solve, and an Indexed of either unapplied form never substitutes
+   to a value, so neither arity has a materialization path. *)
 VerificationTest[
     Through[{ArrayContainerQ, ArrayExplicitQ, ArrayLazyQ, ArraySymbolicQ}[$pfLazy]],
     {True, False, True, False},
@@ -273,6 +320,18 @@ VerificationTest[
     {ArrayContainerQ[$pf], ArrayLazyQ[$pf], ArrayContainerQ[$pf[aa]], ArrayLazyQ[$pf[aa]]},
     {False, False, False, False},
     TestID -> "Lazy-ParametricFunction-bare-and-partial-declined"
+]
+
+(* Binding every parameter numerically is the solve itself: pf[1.] is an
+   array-valued InterpolatingFunction, which is a container on that head's own
+   terms - the bare form, whose elements are its unapplied component
+   interpolants. *)
+VerificationTest[
+    With[{solved = $pf[1.]},
+        {Head[solved], ArrayLazyQ[solved], ArrayDimensions[solved], Map[Head, ArrayMaterialize[solved]]}
+    ],
+    {InterpolatingFunction, True, {2}, {InterpolatingFunction, InterpolatingFunction}},
+    TestID -> "Lazy-ParametricFunction-numeric-parameters-give-a-bare-container"
 ]
 
 (* Numeric arguments throughout: pf[1.] solves and pf[1.][0.5] is an explicit

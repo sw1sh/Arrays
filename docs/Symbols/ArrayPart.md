@@ -20,7 +20,7 @@ RelatedGuides: [Arrays]
 - Symbolic containers are sliced structurally, one index at a time, with the index applied to the container's name: a [MatrixSymbol]() row becomes a [VectorSymbol]() with the indexed name, a [VectorSymbol]() element becomes a rank-0 [ArraySymbol](), and an [ArraySymbol]() slice drops the indexed level, becoming a [MatrixSymbol]() when rank 2 remains.
 - A level kept with [All]() is recorded on the name as an empty application, so a column of <code>[MatrixSymbol]()["M", {2, 3}]</code> is <code>[VectorSymbol]()["M"[][2], {2}]</code>.
 - For an atomic symbol registered in `$Assumptions` as an element of [Matrices]() or [Arrays](), the symbol itself is returned and its `$Assumptions` entry is re-registered in place with the sliced dimensions.
-- A lazy container is sliced per scalar: a row of an unapplied [Function]() is an array of scalar [Function]() expressions, a row of an array-valued [Piecewise]() an array of scalar [Piecewise]() expressions, and a component of an array-valued [InterpolatingFunction]() application that component's own interpolation applied to the parameter.
+- A lazy container is sliced per scalar: a row of an unapplied [Function]() is an array of scalar [Function]() expressions, a row of an array-valued [Piecewise]() an array of scalar [Piecewise]() expressions, and a component of an array-valued [InterpolatingFunction]() application that component's own interpolation applied to the parameter; a component of the bare interpolating function is that interpolation unapplied.
 - A slice that leaves rank 0 is a scalar expression of the container's parameters rather than a container.
 - An empty index list gives *a* itself.
 
@@ -189,6 +189,22 @@ if[0.5][[1]]
 ```
 
 <!-- => 0.8775824340095093 -->
+
+A component of the bare function is that component's interpolation unapplied:
+
+```wl
+bareComponent = ArrayPart[if, {1}]
+```
+
+<!-- => InterpolatingFunction[{{0., 1.}}, <>], the first component unapplied -->
+
+Applying it evaluates that component alone:
+
+```wl
+bareComponent[0.5]
+```
+
+<!-- => 0.8775811345067771 -->
 
 ## Properties and Relations
 

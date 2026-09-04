@@ -16,6 +16,7 @@ RelatedGuides: [Arrays]
 ## Details & Options
 
 - On a lazy container the whole expression is substituted at once, so substituting all parameters evaluates the array-valued function a single time and returns an explicit (typically packed) array. An array-valued [Piecewise]() whose condition becomes decidable collapses to the branch value the same way.
+- A bare array-valued [InterpolatingFunction]() carries no free parameter for a rule to bind: its parameter is positional, bound only by applying the function, so rules give the container back unchanged with its value grid untouched. An applied [InterpolatingFunction]() substitutes in its argument positions only, never inside the object, so a rule keyed on a number its grid happens to contain leaves the grid as it is.
 - An unapplied [Function]() is the exception in form only, since its parameters are bound rather than free: a rule keyed on every parameter applies the [Function](), again a single whole-array evaluation, and the result is repacked.
 - A rule keyed on only some parameters of a [Function]() curries, giving a [Function]() of the parameters that are still free; the remaining rules rewrite the free symbols of the body and keep the container lazy.
 - The same bound-parameter treatment reaches an unapplied [Function]() carried inside an explicit container, such as the per-scalar expansion of a [Function]() container or a single element taken out of it. Plain [ReplaceAll]() would instead rewrite the parameter specification, producing a [Function]() whose parameter is a value.
@@ -248,3 +249,21 @@ ReplaceAll[rotation, th -> 0.5]
 ```
 
 <!-- => Function::flpar, then Function[0.5, {{Cos[0.5], -Sin[0.5]}, {Sin[0.5], Cos[0.5]}}] -->
+
+---
+
+A rule cannot bind the parameter of a bare [InterpolatingFunction](), which is positional rather than named; the container comes back unchanged:
+
+```wl
+ArrayReplaceAll[sol, tau -> 0.5]
+```
+
+<!-- => InterpolatingFunction[{{0., 1.}}, <>], the unchanged container -->
+
+Applying the function binds its parameter:
+
+```wl
+sol[0.5]
+```
+
+<!-- => {0.8775824340095093, -0.479425447892118} -->

@@ -21,7 +21,7 @@ RelatedGuides: [Arrays]
 - Explicit containers reshape through [ArrayReshape]() with its semantics: elements are taken in row-major order, excess elements are dropped, and missing elements are filled with 0 or with *pad*.
 - The container is preserved wherever [ArrayReshape]() preserves it: a [SparseArray]() stays sparse, a packed array stays packed, a [NumericArray]() stays a [NumericArray](), and a [QuantityArray]() keeps its wrapper.
 - The remaining wrapper containers ([Tabular](), [Dataset](), [EventSeries](), ...) reshape their materialized data, losing the wrapper.
-- A lazy parametric container, an array-valued [InterpolatingFunction]() applied to a symbolic parameter, reshapes the value array at every grid point and reinterpolates, so the result stays lazy.
+- A lazy container reshapes the value array at every grid point and reinterpolates, staying lazy: an array-valued [InterpolatingFunction]() applied to a symbolic parameter gives another application, and the bare function gives another unapplied [InterpolatingFunction]().
 - Symbolic containers are not reshaped; [ReshapeArray]() stays unevaluated on them.
 
 ## Basic Examples
@@ -150,6 +150,24 @@ Flatten[if[0.5]]
 ```
 
 <!-- => {0.8775824340095101, 0.4794254478921167, -0.4794254478921167, 0.8775824340095101} -->
+
+---
+
+The bare function reshapes its value grid the same way, giving another unapplied [InterpolatingFunction]():
+
+```wl
+ReshapeArray[if, {4}]
+```
+
+<!-- => InterpolatingFunction[{{0., 1.}}, "<>"] summary box, output a vector of length 4 -->
+
+The reshaped function is a lazy container with the new shape:
+
+```wl
+ArrayDimensions[ReshapeArray[if, {4}]]
+```
+
+<!-- => {4} -->
 
 ## Possible Issues
 

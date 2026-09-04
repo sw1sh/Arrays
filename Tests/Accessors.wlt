@@ -85,6 +85,22 @@ VerificationTest[
     TestID -> "accessors-materialize-lazy-matches-per-scalar-expansion"
 ]
 
+(* The BARE form materializes to its component interpolants UNAPPLIED - the
+   container is unapplied, so its elements are too - and each component agrees
+   with the whole at a probe point to interpolation accuracy, since the value
+   grid does not carry an NDSolve interpolant's Hermite derivative data. *)
+VerificationTest[
+    With[{expansion = ArrayMaterialize[$if]},
+        {
+            Length[expansion],
+            Union[Head /@ expansion],
+            TrueQ[Max[Abs[Map[#[0.3] &, expansion] - $if[0.3]]] < 1*^-4]
+        }
+    ],
+    {2, {InterpolatingFunction}, True},
+    TestID -> "accessors-materialize-bare-interpolatingfunction-unapplied-components"
+]
+
 VerificationTest[
     ArrayMaterialize[$mat],
     $mat,

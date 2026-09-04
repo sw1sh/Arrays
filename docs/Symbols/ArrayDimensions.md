@@ -18,7 +18,7 @@ RelatedGuides: [Arrays]
 - [ArrayDimensions]() never materializes its argument: every container tier has a shape route that introspects the container directly.
 - Explicit containers ([SparseArray](), packed and plain [List]() arrays, structured arrays such as [SymmetrizedArray]()) use the standard tensor-dimension probe; [NumericArray]() and the wrapper containers [QuantityArray](), [TabularColumn](), [Tabular](), [Dataset](), [ByteArray](), [EventSeries]() and [DataStructure]() array stores introspect their shape metadata.
 - An [EventSeries]() reports the dimensions of its values, so a scalar-valued series of length $n$ gives $\{n\}$, not $\{n, 1\}$; a [DataStructure]() store is rank 1 and gives its length.
-- Each lazy head has its own shape route: an <code>[InterpolatingFunction]()[...][*t*]</code> reads the `"OutputDimensions"` property off the head, a [Piecewise]() takes the common shape of its branch values and default, and a source [NetGraph]() or [NetChain]() reads its output port, none of which evaluates the container.
+- Each lazy head has its own shape route: an array-valued [InterpolatingFunction](), bare or applied as <code>[InterpolatingFunction]()[...][*t*]</code>, reads its `"OutputDimensions"` property, a [Piecewise]() takes the common shape of its branch values and default, and a source [NetGraph]() or [NetChain]() reads its output port, none of which evaluates the container.
 - A [ParametricFunction]() application has no shape property, so its shape comes from one probe solve at a random parameter point, cached per object; later queries read the cache.
 - The shape of an unapplied [Function]() comes from an [ArrayDeclareShape]() declaration where there is one, and otherwise from a formal-symbol probe and then a numeric probe, both of which evaluate the body of the [Function]().
 - Symbolic containers give their declared dimensions: the second argument of [VectorSymbol](), [MatrixSymbol]() or [ArraySymbol](), or the dimensions registered for an atomic symbol in `$Assumptions` via [Vectors](), [Matrices]() or [Arrays]() domains.
@@ -128,6 +128,25 @@ ArrayDimensions[CreateDataStructure["DynamicArray", {1., 2., 3.}]]
 <!-- => {3} -->
 
 ### Lazy containers
+
+A bare array-valued interpolating function reads its output dimensions off the object, without evaluating:
+
+```wl
+f = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}];
+ArrayDimensions[f]
+```
+
+<!-- => {2} -->
+
+A derivative of the solution is itself an [InterpolatingFunction]() and reports the same output dimensions:
+
+```wl
+ArrayDimensions[f']
+```
+
+<!-- => {2} -->
+
+---
 
 An array-valued [Piecewise]() takes the common shape of its branch values and its default, without evaluating any condition:
 

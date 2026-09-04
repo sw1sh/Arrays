@@ -16,9 +16,11 @@ RelatedGuides: [Arrays]
 ## Details & Options
 
 - A lazy container carries no elements: its shape is introspectable without evaluating it, and evaluating it is what produces the array.
-- The registered heads are an array-valued [InterpolatingFunction]() application, a fully applied array-valued [ParametricFunction](), an unapplied array-valued [Function](), an array-valued [Piecewise]() and a source [NetGraph]() or [NetChain]().
+- The registered heads are an array-valued [InterpolatingFunction](), applied or unapplied, a fully applied array-valued [ParametricFunction](), an unapplied array-valued [Function](), an array-valued [Piecewise]() and a source [NetGraph]() or [NetChain]().
 - An <code>[InterpolatingFunction]()[...][*t*]</code> is lazy when its `"OutputDimensions"` are non-empty and at least one argument is non-numeric.
-- A [ParametricFunction]() is lazy only in its fully applied form <code>*pf*[*params*][*t*]</code>, with at least one non-numeric argument: substituting every parameter of <code>*pf*[*params*]</code> gives an [InterpolatingFunction](), a function rather than an array, and the bare object has nothing bound at all.
+- The unapplied [InterpolatingFunction]() itself is lazy when its `"OutputDimensions"` are non-empty and it interpolates over a single input coordinate. It is inert as it stands, so no argument condition applies; its elements are the unapplied component interpolants, which [ArrayMaterialize]() reconstructs from the value grid. A scalar-valued object is not a container in either form, and an unapplied object over several input coordinates is declined; the multivariate object is a container only in its applied form.
+- A derivative of an array-valued [InterpolatingFunction]() is itself an array-valued [InterpolatingFunction]() and is admitted on the same terms, applied or unapplied.
+- A [ParametricFunction]() is lazy only in its fully applied form <code>*pf*[*params*][*t*]</code>, with at least one non-numeric argument. A [ParametricFunction]() carries equations rather than a value grid, so the bare object *pf* and the partially applied <code>*pf*[*params*]</code> have no per-component reconstruction to read: their components exist only past a solve, and an [Indexed]() element of either unapplied form never substitutes to a value. Binding every parameter numerically runs the solve, and <code>*pf*[*params*]</code> is then an array-valued [InterpolatingFunction](), a container on that head's own terms.
 - A [Function]() is stored unapplied, since applying it evaluates it, so the container is the [Function]() itself and its parameters are bound rather than free. Supported forms are <code>[Function]()[*x*, *body*]</code>, <code>[Function]()[{$x_1$, ...}, *body*]</code> and the slot form <code>[Function]()[*body*]</code>; a three-argument [Function]() and a [SlotSequence]() body are declined.
 - The shape of a [Function]() comes from a three-step protocol: an [ArrayDeclareShape]() declaration, a formal-symbol probe, then a numeric probe. Both probes evaluate the body, so recognizing an undeclared [Function]() runs it once; a declaration is consulted first and skips them.
 - A [Piecewise]() is lazy when every branch value and the default are arrays of one shape. The scalar default that [Piecewise]() supplies for a branch-only specification is declined, since a substitution falling through every condition would then give a scalar.
@@ -26,7 +28,7 @@ RelatedGuides: [Arrays]
 - The non-numeric test is [NumericQ](), so exact numeric arguments such as $\pi/4$ evaluate an applied form rather than keeping it lazy.
 - [ArrayDimensions]() reads the shape per head, never by materializing: the output dimensions of an [InterpolatingFunction](), the common branch shape of a [Piecewise](), the output port of a net, one cached probe solve for a [ParametricFunction](), and the declared or probed shape of a [Function]().
 - [ArrayReplaceAll]() substitutes the whole lazy expression at once, so substituting all parameters evaluates the array-valued function a single time.
-- Structural operations keep the container lazy where its head supplies a lazy-preserving rebuild: the value grid of an [InterpolatingFunction]() is remapped and reinterpolated, the branch values of a [Piecewise]() are transformed in place, and the body of a [Function]() is transformed and re-abstracted. A [ParametricFunction]() and a net have no rebuild, so their structural operations materialize first.
+- Structural operations keep the container lazy where its head supplies a lazy-preserving rebuild: the value grid of an [InterpolatingFunction]() is remapped and reinterpolated, the branch values of a [Piecewise]() are transformed in place, the body of a [Function]() is transformed and re-abstracted, and a net is rewired with a layer that performs the operation. A [ParametricFunction]() has no rebuild, so its structural operations materialize first.
 - The stored-value accessors [ArrayExplicitValues](), [ArrayExplicitPositions]() and [ArrayExplicitLength]() give <code>Missing["NotExplicit"]</code> for lazy containers.
 
 ## Basic Examples
@@ -92,11 +94,60 @@ ArrayDimensions[v[tau]]
 
 ---
 
+The unapplied [InterpolatingFunction]() is a lazy container as it stands; its elements are the unapplied component interpolants:
+
+```wl
+ArrayLazyQ[v]
+```
+
+<!-- => True -->
+
+---
+
+Its derivative is again an array-valued [InterpolatingFunction]() and is a container on the same terms:
+
+```wl
+ArrayLazyQ[v']
+```
+
+<!-- => True -->
+
+---
+
 A scalar-valued [InterpolatingFunction]() application is not a lazy container:
 
 ```wl
 u = NDSolveValue[{g'[t] == -g[t], g[0] == 1.}, g, {t, 0, 1}];
 ArrayLazyQ[u[tau]]
+```
+
+<!-- => False -->
+
+---
+
+The unapplied scalar-valued object is declined as well:
+
+```wl
+ArrayLazyQ[u]
+```
+
+<!-- => False -->
+
+---
+
+A multivariate array-valued interpolant is a lazy container in its applied form:
+
+```wl
+mv = Interpolation[Flatten[Table[{{x, y}, {x + y, x - y}}, {x, 0., 1., .25}, {y, 0., 1., .25}], 1]];
+ArrayLazyQ[mv[sx, sy]]
+```
+
+<!-- => True -->
+
+Unapplied over several input coordinates, it is declined; the unapplied form is admitted for a single input coordinate only:
+
+```wl
+ArrayLazyQ[mv]
 ```
 
 <!-- => False -->
@@ -140,7 +191,7 @@ ArrayDimensions[pf[aa][tt]]
 
 ---
 
-The bare object is a function of its parameters, not an array, so it is not a container:
+The bare object carries equations and no value grid, so it has no per-component reconstruction and is not a container:
 
 ```wl
 ArrayLazyQ[pf]
@@ -150,13 +201,23 @@ ArrayLazyQ[pf]
 
 ---
 
-The partially applied form gives an [InterpolatingFunction]() once its parameters are numeric, again a function rather than an array:
+The partially applied form holds its components only past a solve, so it is not a container either:
 
 ```wl
 ArrayLazyQ[pf[aa]]
 ```
 
 <!-- => False -->
+
+---
+
+Binding the parameter numerically runs the solve, and the result is an array-valued [InterpolatingFunction](), a container on that head's own terms:
+
+```wl
+ArrayLazyQ[pf[1.]]
+```
+
+<!-- => True -->
 
 ### Unapplied functions
 
@@ -370,10 +431,18 @@ ArrayTranspose[pw, {2, 1}]
 
 ---
 
-A head with no rebuild materializes first; transposing a source net gives an explicit matrix:
+A source net rebuilds through a layer that performs the transposition, so the result is again a net that has not been run:
 
 ```wl
-ArrayTranspose[net, {2, 1}]
+transposedNet = ArrayTranspose[net, {2, 1}]
+```
+
+<!-- => NetGraph summary box: the source layer feeding a transposing FunctionLayer, output port {3, 2} -->
+
+Running it gives the transposed values:
+
+```wl
+transposedNet[]
 ```
 
 <!-- => {{1., 4.}, {2., 5.}, {3., 6.}} -->

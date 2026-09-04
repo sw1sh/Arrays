@@ -450,14 +450,26 @@ VerificationTest[
     TestID -> "Lazy-arrayobject-construction"
 ]
 
-(* Kind is derived from the head chain, so a newly admitted head reports its own
-   name with no lookup table to update: the chain of a fully applied
-   ParametricFunction takes one step more than an InterpolatingFunction and
-   still lands on the constructor symbol. *)
+(* Kind is derived from the head chain, so a newly admitted head or arity
+   reports its own name with no lookup table to update: the bare
+   InterpolatingFunction and its applied form land on the same constructor
+   symbol, and the chain of a fully applied ParametricFunction takes one step
+   more and still does. *)
 VerificationTest[
-    Map[ArrayObject[#]["Kind"] &, {$lazy, $pfLazy, $fn, $pw}],
-    {"InterpolatingFunction", "ParametricFunction", "Function", "Piecewise"},
+    Map[ArrayObject[#]["Kind"] &, {$lazy, $if, $pfLazy, $fn, $pw}],
+    {"InterpolatingFunction", "InterpolatingFunction", "ParametricFunction", "Function", "Piecewise"},
     TestID -> "Lazy-arrayobject-property-kind"
+]
+
+(* The bare array-valued InterpolatingFunction wraps like any other lazy
+   container: same Kind as its applied form, lazy tier, shape off the object's
+   own property. *)
+VerificationTest[
+    With[{obj = ArrayObject[$if]},
+        {ArrayObjectQ[obj], obj["Kind"], obj["Tier"], obj["Dimensions"], obj["Rank"]}
+    ],
+    {True, "InterpolatingFunction", "Lazy", {2}, 1},
+    TestID -> "Lazy-arrayobject-bare-interpolatingfunction"
 ]
 
 VerificationTest[

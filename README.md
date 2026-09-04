@@ -5,8 +5,10 @@ for classifying, introspecting, and operating on arrays regardless of how they a
 stored - explicit (`SparseArray`, packed arrays, `List`, `NumericArray`,
 structured arrays, and shape-introspectable wrappers: `QuantityArray`,
 `TabularColumn`, `Tabular`, `Dataset`, `ByteArray`, `EventSeries`, and
-DataStructure array stores), lazy-parametric (array-valued inert applications such as
-`InterpolatingFunction[...][t]` and `ParametricFunction`), and symbolic
+DataStructure array stores), lazy-parametric (array-valued expressions awaiting
+parameters, applied like `InterpolatingFunction[...][t]` and `ParametricFunction`, or
+unapplied like a bare single-coordinate `InterpolatingFunction` and an array-valued
+`Function`), and symbolic
 (`VectorSymbol` / `MatrixSymbol` / `ArraySymbol`, assumption-registered symbols,
 inactive tensor expression trees).
 

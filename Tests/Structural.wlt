@@ -16,6 +16,10 @@ $numeric = NumericArray[{{1., 0.}, {0., 2.}}]
 $if = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}]
 $lazy = $if[tau]
 
+(* A matrix-valued single-coordinate interpolant, built by Interpolation rather
+   than NDSolve so its grid values are exact under reinterpolation. *)
+$m22If = Interpolation[Table[{t, {{Cos[t], Sin[t]}, {2 t, t^2}}}, {t, 0., 1., .1}]]
+
 $pf = ParametricNDSolveValue[{v'[t] == {{0, pa}, {-pa, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}, {pa}]
 $pfLazy = $pf[aa][tt]
 $pfM = ParametricNDSolveValue[{m'[t] == {{0, pa}, {-pa, 0}} . m[t], m[0] == {{1., 0.}, {0., 1.}}}, m, {t, 0, 1}, {pa}]
@@ -540,6 +544,87 @@ VerificationTest[
     ],
     {True, True},
     TestID -> "Lazy-Function-conjugate-stays-lazy"
+]
+
+(* The BARE InterpolatingFunction goes through the same value-grid rebuilds as
+   its applied form, minus the application at the end: every structural op
+   below hands back an unapplied InterpolatingFunction whose value at a probe
+   point is the op applied to the original's value there. *)
+VerificationTest[
+    With[{transposed = ArrayTranspose[$m22If, {2, 1}]},
+        {Head[transposed], ArrayLazyQ[transposed], TrueQ[Max[Abs[transposed[0.3] - Transpose[$m22If[0.3]]]] < 1*^-4]}
+    ],
+    {InterpolatingFunction, True, True},
+    TestID -> "Lazy-bare-InterpolatingFunction-transpose-stays-lazy"
+]
+
+(* Part expands per scalar first, so the part of the bare container is the
+   first component's OWN interpolation, unapplied. *)
+VerificationTest[
+    With[{first = ArrayPart[$if, {1}]},
+        {Head[first], TrueQ[Abs[first[0.3] - $if[0.3][[1]]] < 1*^-4]}
+    ],
+    {InterpolatingFunction, True},
+    TestID -> "Lazy-bare-InterpolatingFunction-part-is-unapplied-component"
+]
+
+VerificationTest[
+    With[{conjugated = ArrayConjugate[$if]},
+        {Head[conjugated], ArrayLazyQ[conjugated], TrueQ[Max[Abs[conjugated[0.5] - Conjugate[$if[0.5]]]] < 1*^-4]}
+    ],
+    {InterpolatingFunction, True, True},
+    TestID -> "Lazy-bare-InterpolatingFunction-conjugate-stays-lazy"
+]
+
+(* The rebuild remaps the grid values where the map keeps them numeric, and
+   declines - leaving ArrayMap unevaluated - where it does not, exactly as the
+   applied form does. *)
+VerificationTest[
+    With[{mapped = ArrayMap[2 # &, $if]},
+        {
+            Head[mapped],
+            ArrayLazyQ[mapped],
+            TrueQ[Max[Abs[mapped[0.5] - 2 $if[0.5]]] < 1*^-4],
+            MatchQ[ArrayMap[mapSym[#] &, $if], _ArrayMap]
+        }
+    ],
+    {InterpolatingFunction, True, True, True},
+    TestID -> "Lazy-bare-InterpolatingFunction-map-rebuilds-where-numeric"
+]
+
+(* Substitution never enters the InterpolatingFunction object.  The bare
+   form binds its parameter positionally and carries no free symbol, so every
+   rule leaves it identical - including a rule keyed on a value the grid
+   contains, and one keyed on the grid origin 0., either of which a plain
+   ReplaceAll would rewrite into an object that still classifies as a container
+   and interpolates wrongly. *)
+VerificationTest[
+    With[{gridValue = $if["ValuesOnGrid"][[3, 2]]},
+        {
+            ArrayReplaceAll[$if, {notPresent -> 5}] === $if,
+            ArrayReplaceAll[$if, tau -> 0.3] === $if,
+            ArrayReplaceAll[$if, gridValue -> 999.] === $if,
+            ArrayReplaceAll[$if, 0. -> 1.] === $if
+        }
+    ],
+    {True, True, True, True},
+    TestID -> "Lazy-bare-InterpolatingFunction-substitution-leaves-grid-intact"
+]
+
+(* The applied form substitutes in its argument positions only: a numeric
+   substitution of the parameter is one whole-array evaluation, a symbolic one
+   stays inert, and a rule keyed on grid data reaches nothing. *)
+VerificationTest[
+    With[{gridValue = $if["ValuesOnGrid"][[3, 2]]},
+        {
+            ArrayReplaceAll[$if[tau], tau -> 0.3] == $if[0.3],
+            ArrayReplaceAll[$if[tau], tau -> sigma] === $if[sigma],
+            ArrayReplaceAll[$if[tau], gridValue -> 999.] === $if[tau],
+            ArrayReplaceAll[$if[tau], 0. -> 1.] === $if[tau]
+        }
+    ],
+    {True, True, True, True},
+    TestID -> "Lazy-applied-InterpolatingFunction-substitution-stays-out-of-the-object"
 ]
 
 EndTestSection[]

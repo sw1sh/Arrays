@@ -22,7 +22,7 @@ RelatedGuides: [Arrays]
 - At any other level a [SparseArray]() densifies through [Normal]() before mapping.
 - A packed array repacks with the plain, non-coercing form of `` Developer`ToPackedArray ``: a result whose values pack as they stand is returned packed, while exact results such as `{1/2, 1, 3/2}` keep value parity with [Map]() instead of being coerced to machine reals.
 - [NumericArray](), structured arrays such as [SymmetrizedArray]() and wrapper containers ([QuantityArray](), [Tabular](), ...) map over their materialized data and give an explicit array; a [QuantityArray]() maps over its magnitudes, not over [Quantity]() elements.
-- At element level a lazy container maps *f* over its interpolation value grid and reinterpolates, staying lazy, provided *f* keeps the grid values numeric ([Chop](), [N](), [Abs](), ...); otherwise [ArrayMap]() stays unevaluated.
+- At element level a lazy container maps *f* over its interpolation value grid and reinterpolates, staying lazy, provided *f* keeps the grid values numeric ([Chop](), [N](), [Abs](), ...); otherwise [ArrayMap]() stays unevaluated. An applied array-valued [InterpolatingFunction]() gives another application, and the bare function gives another unapplied [InterpolatingFunction]().
 - At element level a symbolic container has no addressable elements, so *f* applies to the whole container, letting [Simplify]() and friends distribute over the symbolic tree; at other levels [ArrayMap]() stays unevaluated.
 
 ## Basic Examples
@@ -131,6 +131,22 @@ ArrayLazyQ[chopped]
 ```
 
 <!-- => True -->
+
+The bare function remaps the same grid, giving another unapplied [InterpolatingFunction]():
+
+```wl
+choppedBare = ArrayMap[Chop, sol]
+```
+
+<!-- => InterpolatingFunction[{{0., 1.}}, <>], the remapped grid unapplied -->
+
+Applying it evaluates the remapped interpolation:
+
+```wl
+choppedBare[0.5]
+```
+
+<!-- => {0.8775811345067771, -0.47942470176036955} -->
 
 ---
 

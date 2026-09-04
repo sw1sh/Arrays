@@ -966,6 +966,16 @@ VerificationTest[
     TestID -> "indexcontract-lazy-operand-declined"
 ]
 
+(* The BARE array-valued InterpolatingFunction classifies lazy, and the
+   executors are explicit-tier only, so it is refused exactly as the applied
+   form is. *)
+VerificationTest[
+    Head[ArrayIndexContract[{{i}, {i}} :> {{}}, {$if, {1., 2.}}]],
+    ArrayIndexContract,
+    {ArrayIndexContract::tier},
+    TestID -> "indexcontract-bare-interpolatingfunction-operand-declined"
+]
+
 VerificationTest[
     Head[ArrayIndexTransform["ij->ji", $lazy2]],
     ArrayIndexTransform,

@@ -14,6 +14,7 @@ $plain = {{a1, a2}, {a3, a4}}
 
 $if = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}]
 $lazy = $if[tau]
+$scalarIf = NDSolveValue[{u'[t] == - u[t], u[0] == 1.}, u, {t, 0, 1}]
 
 $pf = ParametricNDSolveValue[{v'[t] == {{0, pa}, {-pa, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}, {pa}]
 $pfLazy = $pf[aa][tt]
@@ -43,6 +44,15 @@ VerificationTest[
     ArrayDimensions[$lazy],
     {2},
     TestID -> "shape-dimensions-lazy-interpolatingfunction"
+]
+
+(* The BARE array-valued InterpolatingFunction answers its shape off its own
+   "OutputDimensions" property with no probe; a scalar-valued interpolant
+   answers {} there and so has no array shape in the bare form either. *)
+VerificationTest[
+    {ArrayDimensions[$if], ArrayRank[$if], ArrayDimensions[$if'], ArrayDimensions[$scalarIf]},
+    {{2}, 1, {2}, {}},
+    TestID -> "shape-dimensions-bare-interpolatingfunction"
 ]
 
 VerificationTest[

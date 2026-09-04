@@ -20,7 +20,7 @@ RelatedGuides: [Arrays]
 - Explicit containers with a native [Transpose]() keep their container: [SparseArray](), packed arrays, [NumericArray](), structured arrays such as [SymmetrizedArray](), and [QuantityArray]() all transpose without materializing.
 - The remaining wrapper containers ([Tabular](), [Dataset](), [EventSeries](), ...) have no native [Transpose]() and transpose their materialized data, losing the wrapper.
 - Applied to a nested [Transpose]() form, active or [Inactive](), [ArrayTranspose]() composes the two permutations into a single [Transpose]() wrapper instead of stacking them.
-- A lazy parametric container, an array-valued [InterpolatingFunction]() applied to a symbolic parameter, transposes the value array at every grid point and reinterpolates, so the result stays lazy.
+- A lazy container transposes the value array at every grid point and reinterpolates, staying lazy: an array-valued [InterpolatingFunction]() applied to a symbolic parameter gives another application, and the bare function gives another unapplied [InterpolatingFunction]().
 - Symbolic containers such as [MatrixSymbol]() stay in unevaluated [Transpose]() form, with trivial wrappers removed by [SimplifyArray]().
 - If any dimension of *a* is 0, the result is the empty array `{}`.
 
@@ -196,6 +196,22 @@ Transpose[if[0.5]]
 ```
 
 <!-- => {{0.8775824340095101, -0.4794254478921167}, {0.4794254478921167, 0.8775824340095101}} -->
+
+The bare matrix-valued function transposes the same way, staying an unapplied [InterpolatingFunction]():
+
+```wl
+transposedBare = ArrayTranspose[if, {2, 1}]
+```
+
+<!-- => InterpolatingFunction[{{0., 1.}}, <>], the reinterpolated matrix-valued function unapplied -->
+
+Applying it reads the reinterpolated grid:
+
+```wl
+transposedBare[0.5]
+```
+
+<!-- => {{0.8775811345067782, -0.4794247017603684}, {0.4794247017603684, 0.8775811345067782}} -->
 
 ### Symbolic containers
 

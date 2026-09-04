@@ -18,7 +18,7 @@ RelatedGuides: [Arrays]
 - Explicit containers flatten via [Flatten](), preserving the container where [Flatten]() does: a [SparseArray]() stays a [SparseArray](), a packed array stays packed, a [NumericArray]() stays a [NumericArray](), and a [QuantityArray]() or structured array keeps its wrapper.
 - A [SparseArray]() of rank above 11 flattens through a raw CSR construction instead; the result is the same rank-1 [SparseArray]().
 - Storage wrappers without a native [Flatten]() ([Tabular](), [Dataset](), [ByteArray](), [EventSeries](), [DataStructure]() stores) flatten their [ArrayMaterialize]() data.
-- A lazy array-valued [InterpolatingFunction]() application of rank 1 is returned as-is; at higher rank the value grid is flattened and reinterpolated, so the container stays lazy.
+- A lazy array-valued [InterpolatingFunction](), bare or applied, of rank 1 is returned as-is; at higher rank the value grid is flattened and reinterpolated, so the container stays lazy: an application gives another application, and the bare function gives another unapplied [InterpolatingFunction]().
 - Scalar numeric input passes through unchanged, so [ArrayVector]() can be applied uniformly to rank-0 data.
 
 ## Basic Examples
@@ -176,6 +176,24 @@ Flatten[fM[0.5]]
 ```
 
 <!-- => {0.8775824340095101, 0.4794254478921167, -0.4794254478921167, 0.8775824340095101} -->
+
+---
+
+The bare function flattens its value grid the same way, giving another unapplied [InterpolatingFunction]():
+
+```wl
+ArrayVector[fM]
+```
+
+<!-- => InterpolatingFunction[{{0., 1.}}, "<>"] summary box, output a vector of length 4 -->
+
+Its rank is 1:
+
+```wl
+ArrayDimensions[ArrayVector[fM]]
+```
+
+<!-- => {4} -->
 
 ## Properties and Relations
 

@@ -10,6 +10,12 @@ $sparse = SparseArray[{{0, 1}, {2, 0}}]
 $packed = Developer`ToPackedArray[N[{{1, 2}, {3, 4}}]]
 $numeric = NumericArray[{{1., 0.}, {0., 2.}}]
 
+$if = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}]
+
+(* A matrix-valued single-coordinate interpolant, built by Interpolation rather
+   than NDSolve so its grid values are exact under reinterpolation. *)
+$m22If = Interpolation[Table[{t, {{Cos[t], Sin[t]}, {2 t, t^2}}}, {t, 0., 1., .1}]]
+
 $pf = ParametricNDSolveValue[{v'[t] == {{0, pa}, {-pa, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}, {pa}]
 $pfLazy = $pf[aa][tt]
 $pfM = ParametricNDSolveValue[{m'[t] == {{0, pa}, {-pa, 0}} . m[t], m[0] == {{1., 0.}, {0., 1.}}}, m, {t, 0, 1}, {pa}]
@@ -146,6 +152,28 @@ VerificationTest[
     ArrayVector[$pfLazy] === $pfLazy,
     True,
     TestID -> "Lazy-rank1-flatten-passthrough"
+]
+
+(* The BARE InterpolatingFunction reshapes and flattens per grid value through
+   its rebuild and stays an unapplied InterpolatingFunction; a rank-1 bare
+   object is already a vector, so flattening it is the identity. *)
+VerificationTest[
+    With[{reshaped = ReshapeArray[$m22If, {4}]},
+        {
+            Head[reshaped],
+            ArrayLazyQ[reshaped],
+            ArrayDimensions[reshaped],
+            TrueQ[Max[Abs[reshaped[0.3] - Flatten[$m22If[0.3]]]] < 1*^-4]
+        }
+    ],
+    {InterpolatingFunction, True, {4}, True},
+    TestID -> "Lazy-bare-InterpolatingFunction-reshape-stays-lazy"
+]
+
+VerificationTest[
+    {ArrayVector[$if] === $if, ArrayLazyQ[ArrayVector[$m22If]], ArrayDimensions[ArrayVector[$m22If]]},
+    {True, True, {4}},
+    TestID -> "Lazy-bare-InterpolatingFunction-flatten"
 ]
 
 

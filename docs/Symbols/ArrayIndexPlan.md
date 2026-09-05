@@ -36,17 +36,17 @@ RelatedGuides: [Arrays]
 | `"Transpose"` | permutes into the frame the next step reads | [ArrayTranspose]() |
 | `"Broadcast"` | appends an axis of a given extent | inactive [TensorProduct]() with a vector of ones |
 | `"Multiply"` | merges the operands sharing a carried axis | elementwise [Times]() |
-| `"Contract"` | sums over slot groups | [ArrayMaterialize]() of an inactive [TensorContract]() |
+| `"Contract"` | sums over slot groups | [ArrayContract]() over an inactive [TensorProduct]() |
 
-- A one-slot group sums that slot, a two-slot group is an ordinary contraction, and a group of three or more is the generalized trace a hyperedge lowers to. The `"Groups"` of a contract step index the concatenated levels of its inactive [TensorProduct](), as the *pairs* argument of [ArrayContract]() does.
-- `"Expression"` is that plan held, with operand *k* spelled `#k`. It is the expression the executors release, so the trace read here is what runs.
+- A one-slot group sums that slot, a two-slot group is an ordinary contraction, and a group of three or more is the generalized trace a hyperedge lowers to. The `"Groups"` of a contract step are the *pairs* argument of its [ArrayContract]() call, numbering the concatenated levels of the operands under its inactive [TensorProduct]().
+- `"Expression"` is that plan as a [Function]() of the operands, with operand *k* spelled `#k`. It is the function the executors apply, so the trace read here is what runs.
 - Supported properties:
 
 | Property | Value |
 |---|---|
 | `"AxisSizes"` | the solved size of each axis, keyed by display name |
 | `"Effects"` | the effect records the analysis produced |
-| `"Expression"` | the lowered plan, held, with operand *k* as `#k` |
+| `"Expression"` | the lowered plan, a [Function]() of the operands with operand *k* as `#k` |
 | `"InputDimensions"` | the dimensions the plan was solved for |
 | `"OutputDimensions"` | the dimensions of the result |
 | `"Pattern"` | the [ArrayIndexPattern]() the plan was built from |
@@ -69,7 +69,7 @@ RelatedGuides: [Arrays]
 
 ## Basic Examples
 
-<!-- #| annotation: 04.09.26: Design review - the analysis and the solve are two stages because the analysis is purely structural: it reads the normalized descriptor and never a size, so a pattern reports its effects with no operand in sight, while every dimension a step writes down needs the solved sizes. Sizes are solved by unifying atomic axes against dimensions and then resolving each composite whose factor occurrences are all known but one, counted with multiplicity so that (a a) against 9 resolves nothing while (2 c) against 6 resolves c, iterated to a fixed point and revalidated through the all-known branch, which is what makes a composite consistent across operands rather than only within the one that resolved it. The register file is single-assignment and every register is read at most once, so the plan is a tree and renders to one nested expression with no binding form - that is what makes "Expression" a property of the object rather than of a call, and it is assembled held part by part because ArrayTranspose has a generic clause that would match a Slot and evaluate at build time, leaving the plan rendering something other than the step it stands for. The merge broadcasts only the operands that actually share an index; lifting every operand into the global frame would materialize the whole outer product before summing it, where a contraction group over the inactive tensor product never builds one. The dimension check on execution is what makes a prepared plan safe to hand around: the steps carry the extents they were solved for, so running one against other dimensions does not fail, it quietly lowers to a different array. -->
+<!-- #| annotation: 05.09.26: Design review - the analysis and the solve are two stages because the analysis is purely structural: it reads the normalized descriptor and never a size, so a pattern reports its effects with no operand in sight, while every dimension a step writes down needs the solved sizes. Sizes are solved by unifying atomic axes against dimensions and then resolving each composite whose factor occurrences are all known but one, counted with multiplicity so that (a a) against 9 resolves nothing while (2 c) against 6 resolves c, iterated to a fixed point and revalidated through the all-known branch, which is what makes a composite consistent across operands rather than only within the one that resolved it. The register file is single-assignment and every register is read at most once, so the plan is a tree and renders to one nested expression whose only open positions are the operand slots - that is what lets "Expression" hand back a Function of them, a property of the object rather than of a call, and it is assembled held part by part because ArrayContract and ArrayTranspose each have a generic clause that would match a Slot and evaluate at build time, leaving the plan rendering something other than the step it stands for; the Function put on at the end holds its body as firmly as those parts were held. The merge broadcasts only the operands that actually share an index; lifting every operand into the global frame would materialize the whole outer product before summing it, where a contraction group over the inactive tensor product never builds one. The dimension check on execution is what makes a prepared plan safe to hand around: the steps carry the extents they were solved for, so running one against other dimensions does not fail, it quietly lowers to a different array. -->
 
 An execution plan for a matrix product, solved against two dimension lists:
 
@@ -101,13 +101,13 @@ ArrayIndexPlan["ij,jk->ik", {{2, 2}, {2, 2}}]["Steps"]
 
 ---
 
-The lowered plan, held, with the operands as slots:
+The lowered plan, a function of the operands with operand *k* written `#k`:
 
 ```wl
 ArrayIndexPlan["ij,jk->ik", {{2, 2}, {2, 2}}]["Expression"]
 ```
 
-<!-- => Hold[ArrayMaterialize[Inactive[TensorContract][Inactive[TensorProduct][#1, #2], {{2, 3}}]]] -->
+<!-- => ArrayContract[Inactive[TensorProduct][#1, #2], {{2, 3}}] & -->
 
 ## Scope
 
@@ -175,7 +175,7 @@ The two steps lower to the primitives of their rows:
 ArrayIndexPlan["(i j) -> j i", {{6}}, {"i" -> 2}]["Expression"]
 ```
 
-<!-- => Hold[ArrayTranspose[ReshapeArray[#1, {2, 3}], {2, 1}]] -->
+<!-- => ArrayTranspose[ReshapeArray[#1, {2, 3}], {2, 1}] & -->
 
 ---
 
@@ -193,17 +193,17 @@ The broadcast is a tensor product against a vector of ones, and the merge an ele
 ArrayIndexPlan["ij,j->ij", {{2, 2}, {2}}]["Expression"]
 ```
 
-<!-- => Hold[#1*ArrayTranspose[Developer`ToPackedArray[ArrayMaterialize[Inactive[TensorProduct][#2, ConstantArray[1, 2]]]], {2, 1}]] -->
+<!-- => #1*ArrayTranspose[Developer`ToPackedArray[ArrayMaterialize[Inactive[TensorProduct][#2, ConstantArray[1, 2]]]], {2, 1}] & -->
 
 ---
 
-Two operands sharing no axis carry no contraction node at all:
+Two operands sharing no axis are contracted over no group at all, which is their outer product:
 
 ```wl
 ArrayIndexPlan["i,j->ij", {{2}, {3}}]["Expression"]
 ```
 
-<!-- => Hold[ArrayMaterialize[Inactive[TensorProduct][#1, #2]]] -->
+<!-- => ArrayContract[Inactive[TensorProduct][#1, #2], {}] & -->
 
 ---
 
@@ -213,7 +213,7 @@ A trace is a two-slot group over the product of one operand:
 ArrayIndexPlan["ii->", {{2, 2}}]["Expression"]
 ```
 
-<!-- => Hold[ArrayMaterialize[Inactive[TensorContract][Inactive[TensorProduct][#1], {{1, 2}}]]] -->
+<!-- => ArrayContract[Inactive[TensorProduct][#1], {{1, 2}}] & -->
 
 ---
 
@@ -223,7 +223,7 @@ A single occurrence summed away is a one-slot group:
 ArrayIndexPlan["ij->i", {{2, 2}}]["Expression"]
 ```
 
-<!-- => Hold[ArrayMaterialize[Inactive[TensorContract][Inactive[TensorProduct][#1], {{2}}]]] -->
+<!-- => ArrayContract[Inactive[TensorProduct][#1], {{2}}] & -->
 
 ---
 
@@ -233,7 +233,7 @@ An axis every operand carries and the output keeps is the merge and nothing else
 ArrayIndexPlan["i,i,i->i", {{2}, {2}, {2}}]["Expression"]
 ```
 
-<!-- => Hold[#1*#2*#3] -->
+<!-- => #1*#2*#3 & -->
 
 ### The compile-once path
 
@@ -285,10 +285,11 @@ ArrayIndexContract["ij,jk->ik", {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}]
 
 ---
 
-The plan's own `"Expression"` released by hand gives it again:
+The plan's own `"Expression"` applied to those operands by hand gives it again:
 
 ```wl
-ArrayMaterialize[Inactive[TensorContract][Inactive[TensorProduct][{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}], {{2, 3}}]]
+plan = ArrayIndexPlan["ij,jk->ik", {{2, 2}, {2, 2}}];
+plan["Expression"][{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}]
 ```
 
 <!-- => {{19, 22}, {43, 50}} -->

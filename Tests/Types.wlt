@@ -1,7 +1,7 @@
 (* Tests for the Wolfram/Arrays type algebra: the tier lattice (ArrayTier), the
    element lattice (ArrayElementDomain, ArrayElementType), their joins
    (ArrayUnify), coercion along both lattices (ArrayCoerce), and the mixing
-   point that applies them, ArrayContract on a list of containers.
+   point that applies them, ArrayContract over an operand set.
    Run via Tests/RunTests.wls or TestReport. *)
 
 Needs["Wolfram`Arrays`"]
@@ -43,11 +43,12 @@ $lazyParametricOf = ParametricNDSolveValue[
 $lazyParametric = $lazyParametricOf[lzPa][lzPt]
 
 (* The bind-then-contract truth an operand set must agree with: bind every
-   parameter FIRST, then contract the explicit arrays.  The operands are wrapped
-   in SparseArray so that the list is a list of arrays rather than one array of
-   higher rank, which is what a list of plain Lists means to ArrayContract. *)
+   parameter FIRST, then contract the explicit arrays.  The bound operands go
+   back in as the tensor-product node they were, so nothing here has to disguise
+   one of them as a non-List container to keep the set from reading as a single
+   array of higher rank. *)
 boundContraction[arrays_, rules_, c_] :=
-    Normal[ArrayContract[Map[SparseArray[ArrayReplaceAll[#, rules]] &, arrays], c]]
+    Normal[ArrayContract[Inactive[TensorProduct] @@ Map[ArrayReplaceAll[#, rules] &, arrays], c]]
 
 agreesQ[got_, truth_] := ArrayQ[got, _, NumericQ] && Dimensions[got] === Dimensions[truth] &&
     Max[Abs[got - truth]] < 10.^-12
@@ -461,11 +462,13 @@ EndTestSection[]
 
 BeginTestSection["types - the mixing point"]
 
-(* THE ACCEPTANCE CASE.  ArrayContract on a list of containers is where
-   containers of different kinds meet: the result must be a container, and its
-   tier must be the join of its operands' tiers rather than whichever operand's
-   form happened to survive.  The explicit-with-lazy mix is the one that used to
-   return an inactive expression satisfying no predicate at all. *)
+(* THE ACCEPTANCE CASE.  An operand set, spelled Inactive[TensorProduct][a1,
+   a2, ...], is where containers of different kinds meet: the result must be a
+   container, and its tier must be the join of its operands' tiers rather than
+   whichever operand's form happened to survive.  The explicit-with-lazy mix is
+   the one that used to return an inactive expression satisfying no predicate at
+   all.  $mixes holds each set as a list because ArrayUnify joins a LIST of
+   containers, and every contraction below spells that same set as the node. *)
 
 $mixes = {
     {$sparse, $plainMatrix},
@@ -477,13 +480,13 @@ $mixes = {
 }
 
 VerificationTest[
-    Map[ArrayContainerQ[ArrayContract[#, {{1, 3}}]] &, $mixes],
+    Map[ArrayContainerQ[ArrayContract[Inactive[TensorProduct] @@ #, {{1, 3}}]] &, $mixes],
     ConstantArray[True, 6],
     TestID -> "types-mixed-contraction-gives-a-container"
 ]
 
 VerificationTest[
-    Map[{ArrayTier[ArrayContract[#, {{1, 3}}]], ArrayUnify[#]["Tier"]} &, $mixes],
+    Map[{ArrayTier[ArrayContract[Inactive[TensorProduct] @@ #, {{1, 3}}]], ArrayUnify[#]["Tier"]} &, $mixes],
     {
         {"Explicit", "Explicit"},
         {"Lazy", "Lazy"},
@@ -498,7 +501,7 @@ VerificationTest[
 (* The result keeps the shape the tensor product and contraction give it, on
    every tier. *)
 VerificationTest[
-    Map[ArrayDimensions[ArrayContract[#, {{1, 3}}]] &, $mixes],
+    Map[ArrayDimensions[ArrayContract[Inactive[TensorProduct] @@ #, {{1, 3}}]] &, $mixes],
     {{2, 2}, {2, 2}, {2, 2}, {2}, {2}, {2}},
     TestID -> "types-mixed-contraction-keeps-its-shape"
 ]
@@ -507,7 +510,7 @@ VerificationTest[
    one: binding it gives the contraction of the bound array. *)
 VerificationTest[
     {
-        ArrayReplaceAll[ArrayContract[{$sparse, $lazyFunction}, {{1, 3}}], {lzT -> 0.}],
+        ArrayReplaceAll[ArrayContract[Inactive[TensorProduct][$sparse, $lazyFunction], {{1, 3}}], {lzT -> 0.}],
         ArrayContract[Inactive[TensorProduct][$sparse, {{1., 0.}, {0., 1.}}], {{1, 3}}]
     },
     {{{1., 3.}, {2., 4.}}, {{1., 3.}, {2., 4.}}},
@@ -520,7 +523,9 @@ VerificationTest[
    everywhere else too. *)
 VerificationTest[
     Map[
-        With[{obj = ArrayObject[ArrayContract[#, {{1, 3}}]]}, {ArrayObjectQ[obj], obj["Tier"], obj["Domain"]}] &,
+        With[{obj = ArrayObject[ArrayContract[Inactive[TensorProduct] @@ #, {{1, 3}}]]},
+            {ArrayObjectQ[obj], obj["Tier"], obj["Domain"]}
+        ] &,
         $mixes
     ],
     {
@@ -561,7 +566,7 @@ VerificationTest[
    itself, the collapse to a more specific tier that ArrayTranspose and ArrayMap
    already report for such a head, and binding gives the array on both. *)
 VerificationTest[
-    With[{contraction = ArrayContract[{$sparse, $lazyParametric}, {{2, 3}}]},
+    With[{contraction = ArrayContract[Inactive[TensorProduct][$sparse, $lazyParametric], {{2, 3}}]},
         {
             ArrayContainerQ[contraction],
             ArrayDimensions[contraction],
@@ -577,7 +582,7 @@ VerificationTest[
 ]
 
 VerificationTest[
-    With[{contraction = ArrayContract[{$lazyParametric, SparseArray[{1., 1.}]}, {{2, 3}}]},
+    With[{contraction = ArrayContract[Inactive[TensorProduct][$lazyParametric, SparseArray[{1., 1.}]], {{2, 3}}]},
         {
             ArrayDimensions[contraction],
             agreesQ[
@@ -601,7 +606,7 @@ VerificationTest[
    first and contracting after. *)
 VerificationTest[
     With[{operands = {$lazyFunction, $lazyPiecewise}, rules = {lzT -> 0.3, lzZ -> -1.}},
-        With[{contraction = ArrayContract[operands, {{2, 3}}]},
+        With[{contraction = ArrayContract[Inactive[TensorProduct] @@ operands, {{2, 3}}]},
             {
                 ArrayContainerQ[contraction],
                 ArrayDimensions[contraction],
@@ -618,7 +623,7 @@ VerificationTest[
         operands = {$sparse, $lazyFunction, $lazyPiecewise, $lazyParametric},
         rules = {lzT -> 0.3, lzZ -> -1., lzPa -> 1., lzPt -> 0.4}
     },
-        With[{contraction = ArrayContract[operands, {{2, 3}, {4, 5}, {6, 7}}]},
+        With[{contraction = ArrayContract[Inactive[TensorProduct] @@ operands, {{2, 3}, {4, 5}, {6, 7}}]},
             {
                 ArrayContainerQ[contraction],
                 ArrayDimensions[contraction],
@@ -643,12 +648,15 @@ VerificationTest[
 VerificationTest[
     With[{identity = SparseArray[{{1., 0.}, {0., 1.}}]},
         {
-            FreeQ[ArrayContract[{$lazyFunction, identity}, {{1, 3}, {2, 4}}], _TensorContract | _Inactive],
-            Abs[ArrayReplaceAll[ArrayContract[{$lazyFunction, identity}, {{1, 3}, {2, 4}}], lzT -> 0.3] - 2 Cos[0.3]] < 10.^-12,
+            FreeQ[ArrayContract[Inactive[TensorProduct][$lazyFunction, identity], {{1, 3}, {2, 4}}], _TensorContract | _Inactive],
             Abs[
-                ArrayReplaceAll[ArrayContract[{$lazyPiecewise, identity}, {{1, 3}, {2, 4}}], lzZ -> -1.] - 5.
+                ArrayReplaceAll[ArrayContract[Inactive[TensorProduct][$lazyFunction, identity], {{1, 3}, {2, 4}}], lzT -> 0.3] -
+                    2 Cos[0.3]
             ] < 10.^-12,
-            ArrayContract[{SparseArray[{{1., 2.}, {3., 4.}}], identity}, {{1, 3}, {2, 4}}],
+            Abs[
+                ArrayReplaceAll[ArrayContract[Inactive[TensorProduct][$lazyPiecewise, identity], {{1, 3}, {2, 4}}], lzZ -> -1.] - 5.
+            ] < 10.^-12,
+            ArrayContract[Inactive[TensorProduct][SparseArray[{{1., 2.}, {3., 4.}}], identity], {{1, 3}, {2, 4}}],
             (* the one-operand form of the same contraction: the trace of a lazy
                container, which TensorContract would otherwise take of the
                expression TREE *)
@@ -657,6 +665,28 @@ VerificationTest[
     ],
     {True, True, True, 5., True},
     TestID -> "types-rank-0-mixed-contraction-substitutes-to-the-contracted-value"
+]
+
+(* A node may carry a bare SCALAR factor, a scale being an operand of rank 0,
+   and the tier is read over the CONTAINER operands only.  Read over every
+   operand it would be Missing["NotAContainer"] for any set holding one, which
+   steers a scalar-and-lazy set past both lazy routes into the explicit one,
+   where TensorContract contracts the inert lazy form as an expression tree.
+   Only the node spelling can be asked this: a bare number is not a container,
+   so a List carrying one beside a container names a set and is declined. *)
+VerificationTest[
+    With[{
+        scaled = ArrayContract[Inactive[TensorProduct][2, $sparse], {{1, 2}}],
+        lazyScaled = ArrayContract[Inactive[TensorProduct][2, $lazyFunction], {{1, 2}}]
+    },
+        {
+            scaled,
+            FreeQ[lazyScaled, _TensorContract | _Inactive],
+            Abs[ArrayReplaceAll[lazyScaled, lzT -> 0.3] - 4 Cos[0.3]] < 10.^-12
+        }
+    ],
+    {10, True, True},
+    TestID -> "types-operand-set-carrying-a-scalar-factor-reads-the-container-tier"
 ]
 
 EndTestSection[]

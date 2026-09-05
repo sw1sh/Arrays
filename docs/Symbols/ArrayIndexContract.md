@@ -26,7 +26,7 @@ RelatedGuides: [Arrays]
 - Operands sharing an axis the output carries are aligned to a common frame and multiplied elementwise before the contraction, which is what makes a batch matrix product, a Hadamard product and a column scaling ordinary descriptors.
 - With no output shape written the output is the axes occurring exactly once, in first-occurrence order rather than sorted; [ArrayIndexPattern]() owns the `"DefaultOutput"` rule and the difference between an empty output side and a missing one.
 - The steps keep the container they are handed: a [SparseArray]() and a packed array come back as themselves whatever steps the descriptor emits, a merge that emits no contraction node included.
-- The contraction step is lowered to an inactive [TensorContract]() over the inactive [TensorProduct]() of its operands and handed to [ArrayMaterialize](); a rank-0 operand is kept out of the product and multiplied back in.
+- The contraction step is lowered to [ArrayContract]() over the inactive [TensorProduct]() of its operands, which contracts them against each other without ever building that product; a rank-0 operand is kept out of the product and multiplied back in.
 - With the sum-of-products combiner every step is linear in its operands, so the unit of a [QuantityArray]() is lifted off it, the steps run on the magnitudes, and the product of the units goes back on the result.
 - The result is a [QuantityArray]() in the product unit whatever steps the descriptor emits, an ordinary [Quantity]() where the result is rank 0 and there is no [QuantityArray]() to build, and an unwrapped array where the units cancel and their product is a plain number.
 - A [QuantityArray]() carrying a unit per column has no single unit to lift; one such operand leaves the whole operand set as it stands, and the elements carry their own units.
@@ -37,7 +37,7 @@ RelatedGuides: [Arrays]
 
 | Option | Settings |
 |---|---|
-| `"Combiner"` | `{Times, Plus}`, the sum of products an inactive [TensorContract]() over an inactive [TensorProduct]() expresses |
+| `"Combiner"` | `{Times, Plus}`, the sum of products a contraction over an inactive [TensorProduct]() expresses |
 | `"DefaultOutput"` | `"Contracted"` (default) or `"Identity"` |
 | `"Targeting"` | `Automatic` (default), `True`, `False` |
 
@@ -46,7 +46,7 @@ RelatedGuides: [Arrays]
 
 ## Basic Examples
 
-<!-- #| annotation: 04.09.26: Design review - the contraction is built as an inactive TensorContract over an inactive TensorProduct and handed to ArrayMaterialize rather than to ArrayContract, for two independent reasons: ArrayContract's list form is guarded by ! AllTrue[arrays, ListQ], so an operand set of plain nested Lists falls through to its single-array clause and is reported as a ragged tensor, and its node form goes through SimplifyArray, whose singleton tensor-product rule maps INTO the product, so a contraction over SparseArray operands gave a list of sparse rows where a rank-2 SparseArray was asked for. TensorContract takes a slot group of any length, so a hyperedge needs no pairwise decomposition and the plan carries groups rather than pairs. The unit lift is descriptor-wide rather than one wrapper rule per primitive: with the sum-of-products combiner the plan is multilinear in its operands and registers 1..n are read once each, so the result scales by each operand's unit exactly once, no step depends on the units, and the held plan expression is unchanged - what it runs on is the magnitudes. The tier gate is a refusal and not a materialization: the merge and broadcast steps have no form that keeps a lazy or symbolic operand lazy or symbolic across them, and declining leaves the caller the choice ArrayMaterialize gives them. -->
+<!-- #| annotation: 05.09.26: Design review - the contraction is ArrayContract over an inactive TensorProduct, which is that symbol's spelling for an operand set, so the step names the operation rather than the way it is executed. What ArrayContract does with the node is what the index layer needs of it: the operands are contracted against each other, the outer product is never built, and the containers survive - a SparseArray set gives a SparseArray, packed operands stay packed, exact operands stay exact and a structured atom keeps its structure. TensorContract takes a slot group of any length, so a hyperedge needs no pairwise decomposition and the plan carries groups rather than pairs. The unit lift is descriptor-wide rather than one wrapper rule per primitive: with the sum-of-products combiner the plan is multilinear in its operands and registers 1..n are read once each, so the result scales by each operand's unit exactly once, no step depends on the units, and the plan expression is unchanged - what it runs on is the magnitudes. The tier gate is a refusal and not a materialization: the merge and broadcast steps have no form that keeps a lazy or symbolic operand lazy or symbolic across them, and declining leaves the caller the choice ArrayMaterialize gives them. -->
 
 A shared axis absent from the output contracts the two operands, giving the matrix product:
 
@@ -181,7 +181,7 @@ ArrayIndexContract[{{i_, j_}, {j_, k_}} :> {{i, k}}, {{{1, 2}, {3, 4}}, {{5, 6},
 
 ---
 
-A descriptor containing whitespace is tokenized by identifier, so the axes carry multi-character names:
+A descriptor containing a space is tokenized by identifier, so the axes carry multi-character names:
 
 ```wl
 ArrayIndexContract["b s d, d e -> b s e", {ArrayReshape[Range[8], {2, 2, 2}], {{1, 0}, {0, 1}}}]
@@ -342,7 +342,7 @@ ArrayIndexContract[plan, {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}, "Combiner" -> {Ti
 
 ## Properties and Relations
 
-The descriptor lowers to a [TensorContract]() over the [TensorProduct]() of the operands:
+The descriptor lowers to [ArrayContract]() over the inactive [TensorProduct]() of the operands:
 
 ```wl
 ArrayIndexContract["ij,jk->ik", {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}]
@@ -352,7 +352,17 @@ ArrayIndexContract["ij,jk->ik", {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}]
 
 ---
 
-That node contracted by hand gives the same array:
+That call written out by hand gives the same array:
+
+```wl
+ArrayContract[Inactive[TensorProduct][{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}], {{2, 3}}]
+```
+
+<!-- => {{19, 22}, {43, 50}} -->
+
+---
+
+[TensorContract]() over the built product gives it too, having formed the rank-4 tensor product first:
 
 ```wl
 TensorContract[TensorProduct[{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}], {{2, 3}}]

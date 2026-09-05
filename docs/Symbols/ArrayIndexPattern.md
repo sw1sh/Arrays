@@ -20,9 +20,9 @@ RelatedGuides: [Arrays]
 ## Details & Options
 
 - A descriptor is a list of input shapes given to a list of output shapes. A shape is a list of axis terms, one term per dimension, and a bare shape stands for a one-operand descriptor.
-- The classic einsum dialect is a string with no whitespace, tokenized character by character, and admits letters, `_`, `,` and `->`: `"ij,jk->ik"` names three axes over two input shapes.
-- The einx identifier dialect is a string containing whitespace, tokenized by identifier, and adds digits, `(`, `)`, `[` and `]`: `"b s d, d e -> b s e"` keeps its multi-character names.
-- The mode is chosen from the raw string before it is tokenized, so whitespace anywhere makes every name an identifier: `"ij,jk->ik"` and `"i j, j k -> i k"` are the same pattern, while `"ij, jk->ik"` names two rank-1 input shapes.
+- The classic einsum dialect is a string with no space in it, tokenized character by character, and admits letters, `_`, `,` and `->`: `"ij,jk->ik"` names three axes over two input shapes.
+- The einx identifier dialect is a string containing a space, tokenized by identifier, and adds digits, `(`, `)`, `[` and `]`: `"b s d, d e -> b s e"` keeps its multi-character names.
+- The mode is chosen from the raw string before it is tokenized, so one space anywhere makes every name an identifier: `"ij,jk->ik"` and `"i j, j k -> i k"` are the same pattern, while `"ij, jk->ik"` names two rank-1 input shapes.
 - The Wolfram list-of-shapes dialect is a list of input shapes given as a [RuleDelayed]() to a list of output shapes, `{{i_, j_}, {j_, k_}} :> {{i, k}}`.
 - `"Dialect"` takes three values and they are not one per surface dialect: both string spellings report `"String"`, a list of shapes reports `"Expression"`, and a list of shapes written with [Rule]() reports `"IndexList"`.
 - [RuleDelayed]() holds the output shapes, so a bare output symbol names its axis rather than its value. [Rule]() evaluates both of its sides before the descriptor is read; it is accepted, with an `ArrayIndexPattern::rule` message saying so.
@@ -105,7 +105,7 @@ ArrayIndexPattern["ij,jk->ik"]["Properties"]
 
 ### Dialects
 
-A string with no whitespace is tokenized character by character, so each letter is one axis term:
+A string with no space in it is tokenized character by character, so each letter is one axis term:
 
 ```wl
 ArrayIndexPattern["ij,jk->ik"]["InputRanks"]
@@ -115,7 +115,7 @@ ArrayIndexPattern["ij,jk->ik"]["InputRanks"]
 
 ---
 
-A string containing whitespace is tokenized by identifier, which keeps multi-character names:
+A string containing a space is tokenized by identifier, which keeps multi-character names:
 
 ```wl
 ArrayIndexPattern["b s d, d e -> b s e"]["InputRanks"]

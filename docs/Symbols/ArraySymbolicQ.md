@@ -195,6 +195,10 @@ ArraySymbolicQ[Inactive[TensorProduct][{{1, 2}, {3, 4}}, MatrixSymbol["M", {2, 3
 Every leaf of the contraction tree above is an explicit container, so the tree carries no symbol; it has a value and merely defers computing it, which is the lazy tier:
 
 ```wl
+tree = Inactive[TensorContract][
+    Inactive[TensorProduct][ArrayReshape[Range[6], {2, 3}], ArrayReshape[Range[12], {3, 4}]],
+    {{2, 3}}
+];
 ArrayLazyQ[tree]
 ```
 
@@ -314,6 +318,10 @@ ArrayExplicitValues[MatrixSymbol["M", {2, 3}]]
 A deferred tree, a lazy container, shares that answer, since its elements are not computed either:
 
 ```wl
+tree = Inactive[TensorContract][
+    Inactive[TensorProduct][ArrayReshape[Range[6], {2, 3}], ArrayReshape[Range[12], {3, 4}]],
+    {{2, 3}}
+];
 ArrayExplicitValues[tree]
 ```
 

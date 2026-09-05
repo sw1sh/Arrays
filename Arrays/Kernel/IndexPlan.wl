@@ -333,8 +333,9 @@ indexEmit[step_String, inputs_List, output_Integer, own_Association, frame_List,
 
 (* The plan is a single-assignment register file: registers 1 to n hold the
    operands as given, each step writes one fresh register, and every register is
-   read at most once - so the whole plan renders to one nested expression with
-   no binding form, which is what "Expression" hands back.
+   read at most once - so the whole plan renders to one nested expression whose
+   only open positions are the operand slots, which is the Function that
+   "Expression" hands back.
 
    The seven passes are the alignment core: lift each operand into a common
    axis order, combine, contract, and lower the result back onto the output

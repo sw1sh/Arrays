@@ -9,17 +9,21 @@ PackageScope[indexExecutePlan]
    An execution plan is a single-assignment register file whose registers are
    each read at most once, so the plan is a tree and renders to ONE nested
    expression: every step's expression is substituted straight into the step
-   that reads it, and operand k is left standing as Slot[k].  This is the only
-   place a step becomes an expression - indexExecutePlan releases the very value
-   the "Expression" property shows, so the trace a caller inspects is what runs.
+   that reads it, and operand k is left standing as Slot[k].  The finished body
+   is wrapped in a Function of those slots, which is the head that says what the
+   body already is, and which makes the rendered plan directly applicable: the
+   application plan["Expression"][a1, a2, ...] is the very one indexExecutePlan
+   makes, so the trace a caller inspects is what runs.
 
    The expression is assembled HELD, part by part, and that is not a formatting
-   nicety.  ArrayTranspose has a generic clause that matches any first argument,
-   so an unheld ArrayTranspose[Slot[1], perm] would evaluate to a Transpose of a
-   Slot at the moment it was built, and the plan would render - and execute -
-   something other than the step it stands for.  Building from held parts is also
-   what lets a plan render with no operands at all, which is what makes
-   "Expression" a property of ArrayIndexPlan rather than of a call.
+   nicety.  ArrayContract and ArrayTranspose each have a generic clause that
+   matches any first argument, so an unheld ArrayTranspose[Slot[1], perm] would
+   evaluate to a Transpose of a Slot at the moment it was built, and the plan
+   would render - and execute - something other than the step it stands for.
+   Function is HoldAll, so the wrapper put on at the end protects what it wraps
+   exactly as the Holds below it did.  Building from held parts is also what lets
+   a plan render with no operands at all, which is what makes "Expression" a
+   property of ArrayIndexPlan rather than of a call.
 
    A pattern name is substituted into a held right-hand side, which is what lets
    these helpers place an already computed value inside a Hold without
@@ -39,22 +43,23 @@ indexOnesExpression[n_Integer] := Hold[ConstantArray[1, n]]
    Every step lowers to a primitive this paclet already has and already
    dispatches on the tier of its operands; there is no array algorithm here.
 
-   A contraction is built as an inactive TensorContract over an inactive
-   TensorProduct and handed to ArrayMaterialize, NOT to ArrayContract, and the
-   two reasons are independent.  ArrayContract's list form is guarded by
-   ! AllTrue[arrays, ListQ], so an operand set of plain nested Lists falls
-   through to the single-array clause and is reported as a ragged tensor; and
-   the node form goes through SimplifyArray, whose singleton tensor-product rule
-   maps INTO the product, so a contraction over SparseArray operands gives a
-   list of sparse rows where a rank-2 SparseArray was asked for.  ArrayMaterialize
-   runs the contractions-first Activate of Accessors.wl instead, which contracts
-   the operands against each other without ever building the outer product and
-   which keeps SparseArray structure, packed arrays and structured atoms.
+   A contraction is ArrayContract over an inactive TensorProduct, which is that
+   symbol's spelling for an operand SET, and the step therefore names the
+   operation rather than the way it is executed.  What ArrayContract does with
+   the node is what the index layer needs of it: the operands are contracted
+   against each other and the outer product is never built, so a SparseArray set
+   gives a SparseArray, packed operands stay packed, exact operands stay exact,
+   a structured atom keeps its structure and a QuantityArray carries the product
+   of the units.  A List is one array to that symbol as it is to every other one
+   here, so an operand set of plain nested Lists is contracted as the set it is.
 
    A group of one slot sums that slot, a group of two is an ordinary
    contraction, and a group of three or more is the generalized trace a
    hyperedge lowers to.  TensorContract takes all three, so a hyperedge needs no
-   pairwise decomposition and the plan carries groups rather than pairs. *)
+   pairwise decomposition and the plan carries groups rather than pairs.  An
+   empty group list needs no spelling of its own: the operands share no
+   contracted axis, and a contraction with nothing to sum is their outer
+   product, which is the array the step stands for. *)
 
 indexStepExpression[step : KeyValuePattern["Step" -> "Reshape"], {in_Hold}] :=
     indexHoldApply[ReshapeArray, {in, indexHeldValue[step["Dimensions"]]}]
@@ -106,25 +111,17 @@ indexStepExpression[KeyValuePattern["Step" -> "Multiply"], ins : {__Hold}] :=
 
 indexStepExpression[step : KeyValuePattern["Step" -> "Contract"], ins : {__Hold}] :=
     indexHoldApply[
-        ArrayMaterialize,
-        {indexContractionNode[step["Groups"], indexHoldApply[Inactive[TensorProduct], ins]]}
+        ArrayContract,
+        {indexHoldApply[Inactive[TensorProduct], ins], indexHeldValue[step["Groups"]]}
     ]
-
-(* With no group to sum, the step is the tensor product alone - the outer
-   product of operands sharing no contracted axis.  Wrapping it in an empty
-   TensorContract would be the same array, but it would put a node on the tree
-   that SimplifyArray exists to take off again. *)
-
-indexContractionNode[{}, product_Hold] := product
-
-indexContractionNode[groups_List, product_Hold] :=
-    indexHoldApply[Inactive[TensorContract], {product, indexHeldValue[groups]}]
 
 
 (* Registers 1 .. n hold the operands as given and each step writes one fresh
    register, so the walk is a single forward pass: a step's expression is looked
-   up by register and never rebuilt.  A plan with no steps leaves Hold[Slot[1]],
-   which executes to the operand itself - the descriptor that asks for nothing
+   up by register and never rebuilt.  The finished body leaves its Hold for a
+   Function in one step at the end, a head that holds its argument as firmly, so
+   nothing below was ever exposed.  A plan with no steps gives Function[Slot[1]],
+   which applies to the operand itself - the descriptor that asks for nothing
    copies nothing. *)
 
 indexPlanExpression[plan_Association] := Module[{registers = <||>},
@@ -133,22 +130,24 @@ indexPlanExpression[plan_Association] := Module[{registers = <||>},
         registers[step["Output"]] = indexStepExpression[step, Lookup[registers, step["Inputs"]]],
         {step, plan["Steps"]}
     ];
-    registers[plan["Result"]]
+    Replace[registers[plan["Result"]], Hold[body_] :> Function[body]]
 ]
 
 
 (* === execution ===
 
    TensorProduct has no evaluation on the heads that are not ArrayQ, so a
-   NumericArray, a Dataset or a Tabular handed straight to the node is not
-   contracted at all: Activate turns the inactive product into a Times of the
-   wrappers and the answer is lost with no message.  The operands that need
+   NumericArray, a Dataset or a Tabular handed straight to a contraction node is
+   not contracted at all: Activate turns the inactive product into a Times of
+   the wrappers and the answer is lost with no message.  The operands that need
    materializing are exactly the explicit ones that are not ArrayQ, which is the
-   nativelyContractibleQ rule ArrayContract applies to its own list form,
-   restated here because the index layer builds its own inactive nodes rather
-   than reaching that rule through ArrayContract.  A SparseArray and a packed
-   List are ArrayQ and reach the steps with their container intact, which is the
-   whole reason execution goes through these primitives.
+   nativelyContractibleQ rule ArrayContract applies to the operands of a node it
+   is given.  It is applied here as well, one pass earlier, because an operand
+   reaches EVERY step and not only the contraction: a broadcast, a merge and a
+   reshape are handed it as it stands, and a wrapper is no more an array to them
+   than it is to TensorProduct.  A SparseArray and a packed List are ArrayQ and
+   reach the steps with their container intact, which is the whole reason
+   execution goes through these primitives.
 
    A TabularColumn is ArrayQ and passes that rule, and it is materialized all
    the same.  It is rank 1 by construction, so a broadcast, a split or any other
@@ -195,8 +194,8 @@ indexOperandTier[arrays_List] := With[{containers = Select[arrays, ArrayContaine
    operands, the steps run on the magnitudes, which are the packed data the
    wrapper stores and cheaper to compute with than the Quantity elements the
    dropped wrapper produced, and the product of the units goes back on the
-   result.  The held plan expression is unchanged and still what runs; what it
-   runs on is the magnitudes.
+   result.  The plan expression is unchanged and still what runs; what it runs
+   on is the magnitudes.
 
    The product is formed by multiplying unit QUANTITIES rather than by rewriting
    unit expressions, so the kernel decides what Meters times Meters is, and a
@@ -282,8 +281,11 @@ indexExecutePlan[plan_Association, arrays_List, sym_Symbol] := Module[{operands,
        its magnitudes, which is an explicit container whichever way the gate
        would have answered. *)
     {operands, units} = indexUnitsOff[operands];
-    (* The operands are substituted into the held expression and the whole tree
-       is released once.  ReplaceAll does not rescan what it inserts, so an
-       operand that itself carries a Slot is left alone. *)
-    indexUnitsOn[ReleaseHold[indexPlanExpression[plan] /. Slot[k_Integer] :> operands[[k]]], units]
+    (* The operands are handed to the plan's own Function, which is the value
+       the "Expression" property renders and this is the application it names.  A
+       Function does not rescan what it substitutes, so an operand that itself
+       carries a Slot is left alone; it also takes any number of arguments
+       silently, which is why the count check above stands in front rather than
+       here - too few operands would leave a slot standing in the result. *)
+    indexUnitsOn[indexPlanExpression[plan] @@ operands, units]
 ]

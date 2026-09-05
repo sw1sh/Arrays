@@ -23,7 +23,7 @@ RelatedGuides: [Arrays]
 - A symbolic operand absorbs: narrowing it to a machine type would mean materializing it, which the tier join forbids, so a join carrying one has a domain and no `"ElementType"`. The domains still join, so a complex explicit operand widens a symbolic real one.
 - An operand whose domain is unknown contributes nothing to the join, including every operand of the lazy tier. Only a join in which every operand is unknown has an unknown `"Domain"`.
 - An operand with no lift to the joined tier is returned unchanged in `"Arrays"`. That is every explicit or lazy operand of a symbolic join: the symbolic tier is not reachable by coercion, and each such operand is already a legal leaf of the symbolic tree the join builds.
-- [ArrayContract]() over a list of containers applies these joins, giving a result whose tier is the joined tier.
+- [ArrayContract]() over an operand set, spelled as an inactive [TensorProduct](), applies these joins, giving a result whose tier is the joined tier.
 - Input that is not a non-empty list of expressions satisfying [ArrayContainerQ]() gives an `ArrayUnify::nocontainers` message and stays unevaluated.
 
 ## Basic Examples
@@ -184,10 +184,10 @@ ArrayTier[Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[th]}}]]
 
 ---
 
-[ArrayContract]() over a list of containers applies the joins, and its result lands on the joined tier:
+[ArrayContract]() over an operand set applies the joins, and its result lands on the joined tier:
 
 ```wl
-ArrayTier[ArrayContract[{SparseArray[{{1, 2}, {3, 4}}], MatrixSymbol["Mr", {2, 2}, Reals]}, {{1, 3}}]]
+ArrayTier[ArrayContract[Inactive[TensorProduct][SparseArray[{{1, 2}, {3, 4}}], MatrixSymbol["Mr", {2, 2}, Reals]], {{1, 3}}]]
 ```
 
 <!-- => "Symbolic" -->

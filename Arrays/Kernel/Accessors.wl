@@ -7,6 +7,10 @@ PackageExport[ArrayMaterialize]
 PackageExport[ArrayComputable]
 PackageExport[ArrayPack]
 
+(* Shared with Structural.wl, which finishes a residual tensor product the way
+   the materialization route below does. *)
+PackageScope[deferredActivate]
+
 
 ArrayExplicitValues::usage = "ArrayExplicitValues[a] gives the explicitly stored values of a SparseArray, or the nonzero values of any other explicit array container via an on-demand SparseArray wrap; lazy and symbolic containers give Missing[\"NotExplicit\"]."
 
@@ -156,10 +160,15 @@ ArrayMaterialize[a_ ? lazyContainerQ] := lazyMaterialize[a]
    scalar 0.  Scaling is what a rank-0 factor of a tensor product means, and
    Times threads over an array, so the repair is to take the scalars out and
    multiply them back in. *)
-ArrayMaterialize[a_ ? deferredTreeQ] := Activate[
-    deferredScaleOut @ Activate[unwrapArrayObjects[a], ArrayContract | TensorContract],
-    $inactiveNodeHeads
-]
+ArrayMaterialize[a_ ? deferredTreeQ] :=
+    deferredActivate @ Activate[unwrapArrayObjects[a], ArrayContract | TensorContract]
+
+(* The second pass and the repair between them, factored out because
+   ArrayContract reaches a residual product of its own: it calls TensorContract
+   on an inactive tensor product directly rather than activating an inactive
+   contraction, and the scale-out and the node activation it needs afterwards
+   are these.  Shared rather than restated, so the two routes cannot drift. *)
+deferredActivate[expr_] := Activate[deferredScaleOut[expr], $inactiveNodeHeads]
 
 ArrayMaterialize[a_ ? ArraySymbolicQ] := a
 

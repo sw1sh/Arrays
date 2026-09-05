@@ -43,7 +43,7 @@ RelatedGuides: [Arrays]
 - The collapsed summary box shows the kind and the dimensions. Expanding it adds the tier, the compute-native flag, the two numericity flags, and the element type where the container stores one or the element domain where it does not, plus the unit for a [QuantityArray]().
 - The summary box renders for lazy and symbolic containers without materializing them: it reads only the shape and classification tiers, so an [NDSolveValue]()-backed application and a [MatrixSymbol]() draw a full box with no elements computed.
 - Every function in the paclet takes an [ArrayObject]() wherever it takes a container, and gives the answer for the container it wraps. A result is never re-wrapped: [ArrayVector]() of a handle around a [SparseArray]() is a [SparseArray](), not another handle.
-- A handle nested inside a list argument is not unwrapped, so <code>[ArrayContract]()[{*a*, *obj*}, *pairs*]</code> can give its result in a different container form than the raw-container call would. Pass `"Data"` in a list.
+- A handle nested inside an operand set is not unwrapped, so <code>[ArrayContract]()[[Inactive]()[[TensorProduct]()][*a*, *obj*], *pairs*]</code> contracts the array the handle materializes to and can give its result in a different container form than the raw-container call would. Pass `"Data"` in the operand set.
 - A handle is re-validated on every use. If the container it wraps stops satisfying [ArrayContainerQ]() - an [$Assumptions]() entry registering a symbol is removed, say - the handle gives an `ArrayObject::nocontainer` message and `Missing["NotAContainer"]`, rather than falling through to the generic shape probe and reporting dimensions `{}` and rank 0. The classification predicates give [False]() for such a handle instead of messaging.
 
 ## Basic Examples
@@ -428,6 +428,7 @@ obj = ArrayObject[NumericArray[{{1., 0.}, {0., 2.}}]]
 [ArrayContainerQ]() accepts the handle:
 
 ```wl
+obj = ArrayObject[NumericArray[{{1., 0.}, {0., 2.}}]];
 ArrayContainerQ[obj]
 ```
 
@@ -438,6 +439,7 @@ ArrayContainerQ[obj]
 [ArrayDimensions]() reads the shape of the container it wraps:
 
 ```wl
+obj = ArrayObject[NumericArray[{{1., 0.}, {0., 2.}}]];
 ArrayDimensions[obj]
 ```
 
@@ -448,6 +450,7 @@ ArrayDimensions[obj]
 So does [ArrayRank]():
 
 ```wl
+obj = ArrayObject[NumericArray[{{1., 0.}, {0., 2.}}]];
 ArrayRank[obj]
 ```
 
@@ -458,6 +461,7 @@ ArrayRank[obj]
 [ArrayComputeNativeQ]() gives the answer for the wrapped [NumericArray]():
 
 ```wl
+obj = ArrayObject[NumericArray[{{1., 0.}, {0., 2.}}]];
 ArrayComputeNativeQ[obj]
 ```
 
@@ -468,6 +472,7 @@ ArrayComputeNativeQ[obj]
 And [ArrayNumberQ]() reports its inexact machine reals:
 
 ```wl
+obj = ArrayObject[NumericArray[{{1., 0.}, {0., 2.}}]];
 ArrayNumberQ[obj]
 ```
 
@@ -609,6 +614,7 @@ ArrayDimensions[staleObj]
 The classification predicates answer for such a handle instead of messaging:
 
 ```wl
+staleObj = Block[{$Assumptions = {Element[symStale, Matrices[{2, 2}]]}}, ArrayObject[symStale]];
 ArrayObjectQ[staleObj]
 ```
 
@@ -616,10 +622,18 @@ ArrayObjectQ[staleObj]
 
 ---
 
-A handle nested inside a list argument is not unwrapped at the entry point, so the contraction is taken on the array the handle materializes to and the result comes back in a different container form than the same call on raw containers; pass `"Data"` in the list to keep the forms identical:
+A handle nested inside an operand set is not unwrapped at the entry point, so the contraction is taken on the array the handle materializes to and the result comes back a plain array:
 
 ```wl
-ArrayContract[{SparseArray[{{0, 1}, {2, 0}}], ArrayObject[SparseArray[{{0, 1}, {2, 0}}]]}, {{1, 3}}]
+ArrayContract[Inactive[TensorProduct][SparseArray[{{0, 1}, {2, 0}}], ArrayObject[SparseArray[{{0, 1}, {2, 0}}]]], {{1, 3}}]
 ```
 
-<!-- => Inactive[TensorProduct] wrapping a 2x2 SparseArray whose Normal is {{4, 0}, {0, 1}} -->
+<!-- => {{4, 0}, {0, 1}} -->
+
+The same call on raw containers keeps the [SparseArray](); pass `"Data"` in the operand set to keep the forms identical:
+
+```wl
+ArrayContract[Inactive[TensorProduct][SparseArray[{{0, 1}, {2, 0}}], ArrayObject[SparseArray[{{0, 1}, {2, 0}}]]["Data"]], {{1, 3}}]
+```
+
+<!-- => a SparseArray summary box: rank 2, dimensions {2, 2}, 2 stored elements -->

@@ -180,12 +180,14 @@ HoldPattern[ArrayObject[a_ ? ArrayContainerQ][props___]] /; Length[{props}] =!= 
    would match `a_ ? ArrayExplicitQ` in Vector.wl and hand the wrapper straight
    to Flatten: a silent wrong answer rather than an inert expression.
 
-   An UpValue reaches an argument, not an argument's parts, so a handle nested
-   inside a list is not unwrapped here: ArrayContract[{a, obj}, pairs] carries it
-   into the inactive tensor product, where the Normal UpValue below still gives
-   TensorContract the right array, but the result can come back in a different
-   container form than the raw-container call would give.  Pass obj["Data"] in a
-   list to keep the forms identical. *)
+   An UpValue reaches an argument, not an argument's parts, so a handle among
+   the operands of the inactive tensor product ArrayContract contracts is not
+   unwrapped here: it reaches the same clause that materializes a NumericArray
+   operand, so the contraction is taken on the array the handle materializes to
+   and the result can come back in a different container form than the
+   raw-container call would give.  Pass obj["Data"] as the operand to keep the
+   forms identical.  The index executors unwrap the handles of an operand list
+   at their own door, so no handle reaches a contraction from there. *)
 
 (* The container inside a handle, taken without re-validating it: each caller
    below has already settled what an invalid handle is to do. *)
@@ -253,7 +255,7 @@ ArrayObject /: ArrayAllZeroQ[obj_ArrayObject ? ArrayObjectQ] := ArrayAllZeroQ[ob
 
 (* Type algebra.  ArrayUnify takes a LIST, and an UpValue reaches an argument
    rather than an argument's parts, so a handle inside such a list is not
-   unwrapped here - pass obj["Data"], as for the list form of ArrayContract. *)
+   unwrapped here - pass obj["Data"], as for an operand of a contraction. *)
 
 ArrayObject /: ArrayTier[obj_ArrayObject] := objectData[ArrayTier, obj]
 

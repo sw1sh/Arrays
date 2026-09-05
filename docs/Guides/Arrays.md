@@ -53,7 +53,7 @@ The Arrays paclet treats the many array representations of the Wolfram Language 
 ### Structural operations
 
 - `ArrayTranspose` transpose a container, composing nested permutations and keeping lazy containers lazy
-- `ArrayContract` contract index pairs of a container or of a tensor product of containers
+- `ArrayContract` contract index pairs of a container, or of an operand set spelled as an inactive tensor product
 - `ArrayPart` part extraction that slices symbolic containers structurally
 - `ArrayConjugate` conjugate a container, preserving explicit container heads
 - `ArrayVector` flatten a container to a vector, with a fast sparse route at high rank

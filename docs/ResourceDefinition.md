@@ -162,6 +162,7 @@ ArrayObject[NumericArray[{{1., 0.}, {0., 2.}}]]
 The box of a lazy container is drawn without evaluating the interpolation:
 
 ```wl
+state = NDSolveValue[{f'[t] == {{0, 1}, {-1, 0}} . f[t], f[0] == {1., 0.}}, f, {t, 0, 10}][tau];
 ArrayObject[state]
 ```
 

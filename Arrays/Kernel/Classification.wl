@@ -28,6 +28,10 @@ PackageScope[structuralNodeQ]
 PackageScope[deferredTreeQ]
 PackageScope[$inactiveNodeHeads]
 
+(* Read by ArrayContract in Structural.wl, by the node table below and by the
+   contraction shape in Shape.wl, so it cannot stay file-private either. *)
+PackageScope[operandSetQ]
+
 
 ArrayContainerQ::usage = "ArrayContainerQ[a] gives True if a is a supported array container of any tier: explicit, lazy parametric, or symbolic."
 
@@ -238,6 +242,36 @@ ArraySymbolicQ[s_Symbol] := ! MissingQ[assumptionDimensions[s]]
    here without a matching ArrayDimensions clause is the classification-versus-
    shape disagreement that assertion exists to catch. *)
 
+(* ONE reading of a List, shared by the three places that need it.  A List is
+   one array, whose own levels a contraction numbers; a list of operands to
+   contract against each other is spelled Inactive[TensorProduct][a1, a2, ...],
+   and ArrayContract declines a List given in its place.  A declined call comes
+   back as written, per the paclet's refusal protocol, so this predicate is what
+   keeps that untouched expression from being read as a node: the contraction
+   clause below and the contraction shape in Shape.wl both ask it, and a refused
+   call is therefore not a container and has no shape rather than answering as
+   the single array it was refused as.
+
+   The marks of a set are that at least one element is a container and that not
+   every element is a plain List.  The second is what protects the single-array
+   reading: a nested-List matrix is all Lists and is one array.  The first
+   admits the mistakes a bare-scalar operand invites - {2, sa} and {sa, "x"}
+   name a set as plainly as {sa, sb} does, and left to the single-array reading
+   they leak TensorContract's own rectangularity messages, named for a symbol
+   the caller never typed.
+
+   A PACKED array answers in constant time and answers first, which is what
+   makes the predicate free on the arguments it costs anything on: packing
+   admits machine numbers and packed sub-arrays only, so a packed array holds no
+   container and is always one array.  Everything else short-circuits - AllTrue
+   stops at the first non-List, AnyTrue at the first container - and only a long
+   unpacked list of scalars is scanned to the end. *)
+
+operandSetQ[arrays_List] := ! Developer`PackedArrayQ[arrays] &&
+    ! AllTrue[arrays, ListQ] && AnyTrue[arrays, ArrayContainerQ]
+
+operandSetQ[_] := False
+
 structuralNodeOperands[Inactive[D][t_, __]] := {t}
 
 structuralNodeOperands[(Verbatim[Transpose] | Inactive[Transpose])[t_, ___]] := {t}
@@ -246,7 +280,8 @@ structuralNodeOperands[Inactive[TensorProduct][ts__]] := {ts}
 
 structuralNodeOperands[Verbatim[Plus][ts__]] := {ts}
 
-structuralNodeOperands[HoldPattern[IgnoringInactive[(ArrayContract | TensorContract)[t_, _]]]] := {t}
+structuralNodeOperands[HoldPattern[IgnoringInactive[(ArrayContract | TensorContract)[t_, _]]]] := {t} /;
+    ! operandSetQ[t]
 
 structuralNodeOperands[HoldPattern[IgnoringInactive[Dot[ts__]]]] := {ts}
 

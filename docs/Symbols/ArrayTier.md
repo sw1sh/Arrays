@@ -93,6 +93,7 @@ ArrayTier[state[tau]]
 The unapplied [InterpolatingFunction]() is itself a lazy container, whose elements are the unapplied component interpolants:
 
 ```wl
+state = NDSolveValue[{f'[t] == {{0, 1}, {-1, 0}} . f[t], f[0] == {1., 0.}}, f, {t, 0, 1}];
 ArrayTier[state]
 ```
 
@@ -177,10 +178,10 @@ ArrayObject[SparseArray[{{0, 1}, {2, 0}}]]["Tier"]
 
 ---
 
-The tier of a contraction over containers of different tiers is the maximum of the operands' tiers, so an explicit operand contracted against a lazy one gives a lazy result:
+The tier of a contraction over an operand set of different tiers is the maximum of the operands' tiers, so an explicit operand contracted against a lazy one gives a lazy result:
 
 ```wl
-ArrayTier[ArrayContract[{SparseArray[{{1, 2}, {3, 4}}], Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[th]}}]}, {{1, 3}}]]
+ArrayTier[ArrayContract[Inactive[TensorProduct][SparseArray[{{1, 2}, {3, 4}}], Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[th]}}]], {{1, 3}}]]
 ```
 
 <!-- => "Lazy" -->

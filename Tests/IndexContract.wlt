@@ -993,20 +993,23 @@ VerificationTest[
     TestID -> "indexcontract-symbolic-operands-still-plan"
 ]
 
-(* The plan's expression is the inactive TensorContract over an inactive
-   TensorProduct that the structural nodes of this paclet already shape, so
-   releasing it on symbolic operands gives a tree ArrayDimensions reads. *)
+(* The plan's expression is a Function of the operands whose body is the
+   ArrayContract over an inactive TensorProduct that the contraction step lowers
+   to, so applying it to symbolic operands gives the node that symbol leaves
+   standing for them, and ArrayDimensions reads its shape. *)
 VerificationTest[
     With[{plan = ArrayIndexPlan["ij,jk->ik", {$symA, $symB}]},
-        With[{tree = ReleaseHold[plan["Expression"] /. {Slot[1] -> $symA, Slot[2] -> $symB}]},
+        With[{tree = plan["Expression"][$symA, $symB]},
             {
-                MatchQ[tree, Inactive[TensorContract][Inactive[TensorProduct][$symA, $symB], {{2, 3}}]],
+                MatchQ[plan["Expression"],
+                    Function[ArrayContract[Inactive[TensorProduct][Slot[1], Slot[2]], {{2, 3}}]]],
+                MatchQ[tree, TensorContract[Inactive[TensorProduct][$symA, $symB], {{2, 3}}]],
                 ArrayDimensions[tree]
             }
         ]
     ],
-    {True, {2, 2}},
-    TestID -> "indexcontract-plan-expression-is-the-inert-tree"
+    {True, True, {2, 2}},
+    TestID -> "indexcontract-plan-expression-is-the-contraction-node"
 ]
 
 EndTestSection[]
@@ -1182,8 +1185,33 @@ VerificationTest[
     TestID -> "indexcontract-plan-from-arrays-reads-their-dimensions"
 ]
 
-(* The one combiner an inactive TensorContract over an inactive TensorProduct
-   expresses is the sum of products. *)
+(* The expression the plan renders is the one the executor runs, and a Function
+   is what makes that checkable: applied to the operands by hand it gives the
+   executor's own answer, in the executor's own container. *)
+
+VerificationTest[
+    With[{plan = ArrayIndexPlan["ij,jk->ik", {$sparseA, $sparseB}]},
+        With[{byHand = plan["Expression"][$sparseA, $sparseB]},
+            {byHand === ArrayIndexContract[plan, {$sparseA, $sparseB}], Head[byHand], Normal[byHand]}
+        ]
+    ],
+    {True, SparseArray, {{4, 5}, {10, 11}}},
+    TestID -> "indexcontract-plan-expression-is-what-the-executor-runs"
+]
+
+(* The same holds where the plan is a whole chain rather than one step: a batch
+   product broadcasts, transposes, multiplies and contracts, and every one of
+   those steps is in the rendered expression. *)
+VerificationTest[
+    With[{plan = ArrayIndexPlan["bij,bjk->bik", {$batchA, $batchB}]},
+        plan["Expression"][$batchA, $batchB] === ArrayIndexContract[plan, {$batchA, $batchB}]
+    ],
+    True,
+    TestID -> "indexcontract-plan-expression-runs-a-whole-chain"
+]
+
+(* The one combiner a contraction over an inactive TensorProduct expresses is
+   the sum of products. *)
 VerificationTest[
     Head[ArrayIndexContract["ij,jk->ik", {$a, $b}, "Combiner" -> {Plus, Times}]],
     ArrayIndexContract,

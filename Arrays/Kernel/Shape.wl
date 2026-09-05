@@ -241,9 +241,14 @@ ArrayDimensions[Verbatim[Plus][ts___]] := With[{dims = DeleteCases[ArrayDimensio
     ]
 ]
 
+(* The operand-set guard is the classification table's, asked here for the same
+   reason: a list of operands handed to ArrayContract in place of a node is
+   declined and the call comes back as written, and a shape read off it would be
+   the shape of the single-array reading the refusal exists to withhold. *)
+
 ArrayDimensions[HoldPattern[IgnoringInactive[(ArrayContract | TensorContract)[t_, c : {{___Integer} ...}]]]] := With[{dims = ArrayDimensions[t]},
     shapeFromOperands[{dims}, Delete[dims, List /@ Catenate[c]]]
-]
+] /; ! operandSetQ[t]
 
 (* The pairwise-contraction lowerings.  Dot contracts the last level of each
    operand with the first of the next, so the shape of a chain is that rule

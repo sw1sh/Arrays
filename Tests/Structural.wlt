@@ -73,8 +73,9 @@ VerificationTest[
     TestID -> "structural-transpose-composition-identity"
 ]
 
-(* A plain List argument means a list of arrays to ArrayContract (precedent
-   semantics), so the explicit matrix goes in as a SparseArray. *)
+(* An explicit matrix contracts to what TensorContract gives it.  A List
+   argument is ONE array and numbers its own levels, so the plain nested-List
+   form of this matrix traces identically - pinned in Regressions.wlt. *)
 VerificationTest[
     ArrayContract[SparseArray[{{1, 2}, {3, 4}}], {{1, 2}}],
     TensorContract[{{1, 2}, {3, 4}}, {{1, 2}}],
@@ -90,11 +91,11 @@ VerificationTest[
 ]
 
 VerificationTest[
-    With[{contraction = ArrayContract[{VectorSymbol["u", 2], VectorSymbol["w", 2]}, {{1, 2}}]},
+    With[{contraction = ArrayContract[Inactive[TensorProduct][VectorSymbol["u", 2], VectorSymbol["w", 2]], {{1, 2}}]},
         {MatchQ[contraction, TensorContract[Inactive[TensorProduct][__], _]], ArrayDimensions[contraction]}
     ],
     {True, {}},
-    TestID -> "structural-contract-list-tensor-product"
+    TestID -> "structural-contract-operand-set-tensor-product"
 ]
 
 VerificationTest[
@@ -149,6 +150,26 @@ VerificationTest[
     SimplifyArray[Inactive[TensorProduct][$mat]],
     $mat,
     TestID -> "structural-simplify-singleton-tensorproduct"
+]
+
+(* A singleton inactive product is its OPERAND, and the operand is handed back
+   whole.  Mapping over it instead descends into a container and rebuilds it
+   from its parts, which for a SparseArray is a list of sparse rows. *)
+VerificationTest[
+    With[{simplified = SimplifyArray[Inactive[TensorProduct][$sparse]]},
+        {Head[simplified], simplified === $sparse}
+    ],
+    {SparseArray, True},
+    TestID -> "structural-simplify-singleton-tensorproduct-keeps-the-container"
+]
+
+(* The ACTIVE spelling is the opposite case: TensorProduct is Flat, so the
+   pattern binds the whole product and the map is the recursion through its
+   operands. *)
+VerificationTest[
+    SimplifyArray[TensorProduct[Inactive[Transpose][$mat, {}], VectorSymbol["uS", 2]]],
+    TensorProduct[$mat, VectorSymbol["uS", 2]],
+    TestID -> "structural-simplify-active-tensorproduct-recurses-through-operands"
 ]
 
 VerificationTest[
@@ -267,6 +288,275 @@ VerificationTest[
     },
     {True, True, False, False, False, False},
     TestID -> "structural-allzeroq"
+]
+
+EndTestSection[]
+
+
+BeginTestSection["structural - the operand set"]
+
+(* An operand SET is spelled Inactive[TensorProduct][a1, a2, ...] and its pairs
+   number the levels of the operands CONCATENATED, so a two-operand node at
+   {{2, 3}} is the matrix product.  A List argument is one array and numbers its
+   own levels, which is why the set needs a head of its own.  Every value below
+   is the operands' own arithmetic - Dot, TensorContract, a hand sum - never the
+   contraction being tested. *)
+
+$opA = SparseArray[{{1, 2}, {3, 4}}]
+$opB = SparseArray[{{5, 6}, {7, 8}}]
+
+(* The operands are contracted against each other and the tensor product is
+   never built, which is what keeps the container: sparse against sparse is the
+   SparseArray that SparseArray arithmetic gives. *)
+VerificationTest[
+    With[{contraction = ArrayContract[Inactive[TensorProduct][$opA, $opB], {{2, 3}}]},
+        {Head[contraction], Normal[contraction], Normal[contraction] === Normal[$opA] . Normal[$opB]}
+    ],
+    {SparseArray, {{19, 22}, {43, 50}}, True},
+    TestID -> "operandset-sparse-pair-contracts-to-a-sparsearray"
+]
+
+(* Packed operands give a packed result and exact ones stay exact, both for the
+   same reason: each pairwise contraction is arithmetic on the operands. *)
+VerificationTest[
+    With[{
+        packed = ArrayContract[
+            Inactive[TensorProduct][Developer`ToPackedArray[{{1., 2.}, {3., 4.}}], Developer`ToPackedArray[{{5., 6.}, {7., 8.}}]],
+            {{2, 3}}
+        ],
+        exact = ArrayContract[Inactive[TensorProduct][{{1/2, 1/3}, {1/4, 1/5}}, {{1/6, 1/7}, {1/8, 1/9}}], {{2, 3}}]
+    },
+        {Developer`PackedArrayQ[packed, Real], packed, exact}
+    ],
+    {True, {{19., 22.}, {43., 50.}}, {{1/8, 41/378}, {1/15, 73/1260}}},
+    TestID -> "operandset-packed-stays-packed-and-exact-stays-exact"
+]
+
+(* A QuantityArray set gives a QuantityArray carrying the PRODUCT of the units,
+   which is the unit the contracted magnitudes are in. *)
+VerificationTest[
+    ArrayContract[
+        Inactive[TensorProduct][
+            QuantityArray[{{1., 2.}, {3., 4.}}, "Meters"],
+            QuantityArray[{{5., 6.}, {7., 8.}}, "Seconds"]
+        ],
+        {{2, 3}}
+    ],
+    QuantityArray[{{19., 22.}, {43., 50.}}, "Meters" "Seconds"],
+    TestID -> "operandset-quantityarray-pair-carries-the-product-of-the-units"
+]
+
+(* A single structured operand keeps its structure, and on EVERY index pair, not
+   only the symmetric one.  A one-operand node has no product to keep its
+   operand out of, so the operand is contracted bare and reaches the same native
+   path the bare container does; wrapped in a product instead, the kernel drives
+   the atom's symmetry through a permutation that is not one and does not come
+   back, for five of these six pairs. *)
+VerificationTest[
+    With[{s = SymmetrizedArray[{{1, 1, 2, 2} -> 3., {1, 2, 1, 2} -> 5.}, {2, 2, 2, 2}, Symmetric[{1, 2}]]},
+        Map[
+            {
+                Head[ArrayContract[Inactive[TensorProduct][s], {#}]],
+                Normal[ArrayContract[Inactive[TensorProduct][s], {#}]] === TensorContract[Normal[s], {#}],
+                ArrayContract[Inactive[TensorProduct][s], {#}] === ArrayContract[s, {#}]
+            } &,
+            {{1, 2}, {3, 4}, {1, 3}, {2, 4}, {1, 4}, {2, 3}}
+        ]
+    ],
+    ConstantArray[{SymmetrizedArray, True, True}, 6],
+    TestID -> "operandset-single-structured-operand-keeps-its-structure"
+]
+
+(* The one-operand node and the bare container are the SAME call on every tier,
+   the wrapper having nothing to do on one operand: a SparseArray keeps its
+   head, a packed array stays packed, and a symbolic operand gives the same
+   inactive node either way. *)
+VerificationTest[
+    {
+        ArrayContract[Inactive[TensorProduct][$opA], {{2}}] === ArrayContract[$opA, {{2}}],
+        ArrayContract[Inactive[TensorProduct][$opA], {{1, 2}}] === ArrayContract[$opA, {{1, 2}}],
+        Developer`PackedArrayQ[ArrayContract[Inactive[TensorProduct][Developer`ToPackedArray[{{1., 2.}, {3., 4.}}]], {{2}}]],
+        ArrayContract[Inactive[TensorProduct][MatrixSymbol["Ms1", {2, 2}]], {{1, 2}}] ===
+            ArrayContract[MatrixSymbol["Ms1", {2, 2}], {{1, 2}}]
+    },
+    {True, True, True, True},
+    TestID -> "operandset-one-operand-node-is-the-bare-contraction"
+]
+
+(* A specification TensorContract cannot act on comes back as the inert node it
+   already is, and the product is NOT built to discover that: activating it
+   would materialize every element of the outer product to arrive at the same
+   answer.  The ByteCount is the check - a built product of two 40x40 operands
+   is 40^4 machine reals. *)
+VerificationTest[
+    With[{d = ConstantArray[1., {40, 40}]},
+        Map[
+            Quiet[ByteCount[ArrayContract[Inactive[TensorProduct][d, d], #]]] < 10^6 &,
+            {{{2, 9}}, {{1, 2}, {2, 3}}}
+        ]
+    ],
+    {True, True},
+    TestID -> "operandset-unactionable-specification-never-builds-the-product"
+]
+
+(* The two dense LIMITS of contracting the operands pairwise, stated rather than
+   promised away: two structured atoms give the dense array their own product
+   gives, and a SparseArray with a non-zero background is dense before it is
+   contracted at all.  Buying either back would mean building the tensor
+   product, which is the cost the node exists to avoid. *)
+VerificationTest[
+    With[{
+        s = SymmetrizedArray[{{1, 1} -> 1., {1, 2} -> 2.}, {3, 3}, Symmetric[{1, 2}]],
+        bg = SparseArray[{{1, 1} -> 2.}, {2, 2}, 1.]
+    },
+        {
+            Head[ArrayContract[Inactive[TensorProduct][s, s], {{2, 3}}]],
+            ArrayContract[Inactive[TensorProduct][s, s], {{2, 3}}] === Normal[s] . Normal[s],
+            Head[ArrayContract[Inactive[TensorProduct][bg, $opA], {{2, 3}}]],
+            ArrayContract[Inactive[TensorProduct][bg, $opA], {{2, 3}}] === Normal[bg] . Normal[$opA]
+        }
+    ],
+    {List, True, List, True},
+    TestID -> "operandset-dense-limits-of-the-pairwise-route"
+]
+
+(* Three operands and two groups chain, the rank being arithmetic on the operand
+   ranks rather than anything read off a product that is never built. *)
+VerificationTest[
+    With[{contraction = ArrayContract[Inactive[TensorProduct][$opA, $opB, $opA], {{2, 3}, {4, 5}}]},
+        {Head[contraction], Normal[contraction], Normal[contraction] === Normal[$opA] . Normal[$opB] . Normal[$opA]}
+    ],
+    {SparseArray, {{85, 126}, {193, 286}}, True},
+    TestID -> "operandset-three-operands-chain-through-two-groups"
+]
+
+(* The three shapes a group list can take besides a plain product: consuming
+   every slot leaves a scalar, a group INSIDE one operand traces it and scales
+   the rest, and an empty group list contracts nothing and is the outer product
+   the pairs would otherwise index. *)
+VerificationTest[
+    With[{node = Inactive[TensorProduct][$opA, $opB]},
+        {
+            ArrayContract[node, {{1, 3}, {2, 4}}],
+            Normal[ArrayContract[node, {{1, 2}}]],
+            ArrayDimensions[ArrayContract[node, {}]],
+            Normal[ArrayContract[node, {}]] === Outer[Times, Normal[$opA], Normal[$opB]]
+        }
+    ],
+    {70, {{25, 30}, {35, 40}}, {2, 2, 2, 2}, True},
+    TestID -> "operandset-full-contraction-trace-and-empty-group-list"
+]
+
+(* An operand that TensorContract has no evaluation on is materialized one pass
+   before any of this: a nested node is such an operand, and left standing it
+   would be read as a lazy operand with no lazy container to expand, re-emitting
+   the very call it was given. *)
+VerificationTest[
+    With[{contraction = ArrayContract[
+        Inactive[TensorProduct][TensorContract[Inactive[TensorProduct][$opA, $opA], {{2, 3}}], $opA],
+        {{2, 3}}
+    ]},
+        {Head[contraction], Normal[contraction] === Normal[$opA] . Normal[$opA] . Normal[$opA]}
+    ],
+    {SparseArray, True},
+    TestID -> "operandset-nested-node-operand-is-materialized-first"
+]
+
+(* An operand with a dimension of 0 empties the contraction whatever the other
+   operands are, and on every tier: the short-circuit is taken over the operands
+   themselves, not over whichever form the contraction would otherwise leave. *)
+VerificationTest[
+    {
+        ArrayContract[Inactive[TensorProduct][{}, VectorSymbol["u", 2]], {{1, 2}}],
+        ArrayContract[Inactive[TensorProduct][{}, Function[zdT, {zdT, 2 zdT}]], {{1, 2}}]
+    },
+    {{}, {}},
+    TestID -> "operandset-zero-dimension-operand-empties-every-tier"
+]
+
+(* THE REFUSAL.  A List that names an operand set is DECLINED rather than
+   answered, the single-array reading of such a list being a silent wrong
+   answer rather than a refusal: a list of two SparseArrays is ArrayQ, and
+   reading it as one rank-3 array gives a clean rank-1 container holding the
+   answer to a question nobody asked.  A list holds
+   a set when at least one element is a container and not every element is a
+   plain List - a nested-List matrix is all Lists and stays one array, while a
+   container beside a bare scalar or a string names a set as plainly as two
+   containers do, and answering those leaks TensorContract's own rectangularity
+   messages for a symbol the caller never typed. *)
+VerificationTest[
+    {
+        MatchQ[ArrayContract[{$opA, $opB}, {{2, 3}}], _ArrayContract],
+        MatchQ[ArrayContract[{Normal[$opA], $opB}, {{2, 3}}], _ArrayContract]
+    },
+    {True, True},
+    {ArrayContract::operands, ArrayContract::operands},
+    TestID -> "operandset-list-of-containers-declines-with-its-message"
+]
+
+(* A container beside a non-container is the mistake a rank-0 operand invites,
+   and it names a set as plainly.  Answered as one array it reaches
+   TensorContract's rectangularity messages instead of this one. *)
+VerificationTest[
+    {
+        MatchQ[ArrayContract[{2, $opA}, {{1, 2}}], _ArrayContract],
+        MatchQ[ArrayContract[{$opA, "x"}, {{1, 2}}], _ArrayContract]
+    },
+    {True, True},
+    {ArrayContract::operands, ArrayContract::operands},
+    TestID -> "operandset-container-beside-a-non-container-declines-too"
+]
+
+VerificationTest[
+    MatchQ[ArrayContract[{$opA}, {{1, 2}}], _ArrayContract],
+    True,
+    {ArrayContract::operands},
+    TestID -> "operandset-one-element-list-declines-too"
+]
+
+(* A DECLINED CALL IS NOT AN ARRAY.  The refusal leaves the call as written,
+   which is this paclet's refusal protocol, and the classification table and the
+   contraction shape both ask the same operand-set predicate, so nothing reads
+   the untouched expression as a container: it has no tier, no dimensions and no
+   materialization, and the reading that was withheld cannot be re-derived
+   through an accessor. *)
+VerificationTest[
+    With[{declined = Quiet[ArrayContract[{$opA, $opB}, {{2, 3}}]]},
+        {
+            ArrayContainerQ[declined],
+            ArrayTier[declined],
+            ArrayDimensions[declined],
+            MatchQ[ArrayMaterialize[declined], _ArrayMaterialize],
+            MatchQ[ArrayMap[fD, declined], _ArrayMap]
+        }
+    ],
+    {False, Missing["NotAContainer"], {}, True, True},
+    TestID -> "operandset-declined-call-is-not-a-container"
+]
+
+(* Normal densifies every operand of a declined call to a plain List, and the
+   densified call is the legitimate single-array spelling, which answers - so
+   left to Normal's own recursion the withheld reading would be re-derived
+   without a message.  The declined call answers Normal itself instead, its
+   operands still the containers they were. *)
+VerificationTest[
+    MatchQ[
+        Normal[Quiet[ArrayContract[{$opA, $opB}, {{2, 3}}]]],
+        HoldPattern[ArrayContract[{_SparseArray, _SparseArray}, {{2, 3}}]]
+    ],
+    True,
+    TestID -> "operandset-normal-of-a-declined-call-does-not-rederive-the-reading"
+]
+
+(* The single-array reading is untouched where a List really is one array, and
+   the two spellings of that array agree, which is what the refusal protects. *)
+VerificationTest[
+    {
+        ArrayContract[{{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}, {{2, 3}}],
+        Normal[ArrayContract[SparseArray[{{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}], {{2, 3}}]]
+    },
+    {{5, 13}, {5, 13}},
+    TestID -> "operandset-a-list-of-plain-lists-is-still-one-array"
 ]
 
 EndTestSection[]

@@ -178,6 +178,7 @@ ArrayReplaceAll[Function[{xx, yy}, {{xx, cc yy}, {yy, xx}}], cc -> 3]
 The bound-parameter treatment reaches a [Function]() carried inside an explicit container, such as the per-scalar expansion of a [Function]() container:
 
 ```wl
+rotation = Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[th]}}];
 ArrayReplaceAll[ArrayMaterialize[rotation], th -> 0.5]
 ```
 
@@ -188,6 +189,7 @@ ArrayReplaceAll[ArrayMaterialize[rotation], th -> 0.5]
 A single element taken out of that expansion is one such [Function]() too:
 
 ```wl
+rotation = Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[th]}}];
 ArrayReplaceAll[ArrayPart[rotation, {1, 2}], th -> 0.5]
 ```
 
@@ -245,6 +247,7 @@ ArrayReplaceAll[QuantityArray[{1, 2}, "Meters"], {}]
 Plain [ReplaceAll]() on an unapplied [Function]() rewrites the parameter specification instead of applying the closure, and the kernel rejects the parameter with `Function::flpar`:
 
 ```wl
+rotation = Function[th, {{Cos[th], -Sin[th]}, {Sin[th], Cos[th]}}];
 ReplaceAll[rotation, th -> 0.5]
 ```
 
@@ -255,6 +258,7 @@ ReplaceAll[rotation, th -> 0.5]
 A rule cannot bind the parameter of a bare [InterpolatingFunction](), which is positional rather than named; the container comes back unchanged:
 
 ```wl
+sol = NDSolveValue[{v'[t] == {{0, 1}, {-1, 0}} . v[t], v[0] == {1., 0.}}, v, {t, 0, 1}];
 ArrayReplaceAll[sol, tau -> 0.5]
 ```
 

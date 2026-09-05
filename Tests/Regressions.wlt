@@ -126,6 +126,31 @@ VerificationTest[
     TestID -> "regression-contract-plain-list-matrix-traces"
 ]
 
+(* THE DEFECT THE OPERAND-SET HEAD REMOVES.  One spelling used to carry both
+   readings, told apart by whether every element of the list was itself a List -
+   so an operand set of plain nested Lists failed that test, fell through to the
+   single-array reading and answered a different question: {5, 13}, the rank-3
+   array's own contraction, where the matrix product was meant, and in a
+   container that looked right.  The node says which is which.  Spelled as the
+   set, the same two matrices give the product; spelled as a List, the braces
+   are one rank-3 array and {5, 13} is the question actually asked, which is
+   what TensorContract answers on it; and the set handed in as a list of
+   containers - the spelling that used to mean an operand set - is declined
+   rather than answered. *)
+VerificationTest[
+    With[{a = {{1, 2}, {3, 4}}, b = {{5, 6}, {7, 8}}},
+        {
+            ArrayContract[Inactive[TensorProduct][a, b], {{2, 3}}],
+            ArrayContract[Inactive[TensorProduct][a, b], {{2, 3}}] === a . b,
+            ArrayContract[{a, b}, {{2, 3}}] === TensorContract[{a, b}, {{2, 3}}],
+            MatchQ[ArrayContract[{SparseArray[a], SparseArray[b]}, {{2, 3}}], _ArrayContract]
+        }
+    ],
+    {{{19, 22}, {43, 50}}, True, True, True},
+    {ArrayContract::operands},
+    TestID -> "regression-operand-set-of-plain-lists-is-the-matrix-product"
+]
+
 (* Lazy structural ops keep the container lazy: flatten, reshape, transpose. *)
 VerificationTest[
     With[{flat = ArrayVector[$lazyM]},
@@ -467,16 +492,21 @@ VerificationTest[
 ]
 
 
-(* TensorContract does not evaluate on a head that is not ArrayQ. The list form
-   of ArrayContract handed such an operand straight to the tensor product, and
-   the whole contraction came back an inert node that satisfied ArrayContainerQ
-   but that ArrayMaterialize could not resolve either. *)
+(* TensorContract does not evaluate on a head that is not ArrayQ. ArrayContract
+   handed such an operand straight to the tensor product, and the whole
+   contraction came back an inert node that satisfied ArrayContainerQ but that
+   ArrayMaterialize could not resolve either.  A wrapper operand is materialized
+   before the set is contracted, so it answers in the container its materialized
+   operands give it - a dense one here, where the all-SparseArray set stays
+   sparse, which is why the two are compared through Normal rather than raw. *)
 
 VerificationTest[
     With[{na = NumericArray[{{1., 2.}, {3., 4.}}], sa = SparseArray[{{1., 2.}, {3., 4.}}]},
         {
-            (Normal /@ ArrayContract[{na, sa}, {{2, 3}}]) === (Normal /@ ArrayContract[{sa, sa}, {{2, 3}}]),
-            ArrayContract[{na, sa}, {{1, 3}, {2, 4}}] === ArrayContract[{sa, sa}, {{1, 3}, {2, 4}}],
+            Normal[ArrayContract[Inactive[TensorProduct][na, sa], {{2, 3}}]] ===
+                Normal[ArrayContract[Inactive[TensorProduct][sa, sa], {{2, 3}}]],
+            ArrayContract[Inactive[TensorProduct][na, sa], {{1, 3}, {2, 4}}] ===
+                ArrayContract[Inactive[TensorProduct][sa, sa], {{1, 3}, {2, 4}}],
             ArrayContract[na, {{1, 2}}] === ArrayContract[sa, {{1, 2}}]
         }
     ],
@@ -493,9 +523,9 @@ VerificationTest[
         pw = Piecewise[{{{{1., 2.}, {3., 4.}}, regZ < 0}}, {{5., 6.}, {7., 8.}}]
     },
         {
-            ArrayLazyQ[ArrayContract[{na, pw}, {{2, 3}}]],
-            ArrayReplaceAll[ArrayContract[{na, pw}, {{2, 3}}], regZ -> -1] ===
-                ArrayReplaceAll[ArrayContract[{sa, pw}, {{2, 3}}], regZ -> -1]
+            ArrayLazyQ[ArrayContract[Inactive[TensorProduct][na, pw], {{2, 3}}]],
+            ArrayReplaceAll[ArrayContract[Inactive[TensorProduct][na, pw], {{2, 3}}], regZ -> -1] ===
+                ArrayReplaceAll[ArrayContract[Inactive[TensorProduct][sa, pw], {{2, 3}}], regZ -> -1]
         }
     ],
     {True, True},
@@ -642,7 +672,8 @@ VerificationTest[
 VerificationTest[
     With[{sa = SparseArray[{{1., 2.}, {3., 4.}}]},
         {
-            Normal[ArrayContract[{$symId, sa}, {{2, 3}}]] == Normal[ArrayContract[{Normal[$symId], sa}, {{2, 3}}]],
+            Normal[ArrayContract[Inactive[TensorProduct][$symId, sa], {{2, 3}}]] ==
+                Normal[ArrayContract[Inactive[TensorProduct][Normal[$symId], sa], {{2, 3}}]],
             Normal[ArrayContract[$symId, {{1, 2}}]] == Normal[ArrayContract[Normal[$symId], {{1, 2}}]],
             Normal[ArrayMaterialize[Inactive[TensorProduct][$symId, sa]]] ==
                 Normal[ArrayMaterialize[Inactive[TensorProduct][Normal[$symId], sa]]],

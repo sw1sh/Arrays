@@ -7,6 +7,7 @@ Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/guide/Arrays
 Description: Uniform classification, shape introspection and structural operations across explicit, lazy and symbolic array containers
 Keywords: [array container, sparse array, packed array, numeric array, symbolic array, lazy array, materialization]
+RelatedTutorials: [ArrayContainers, NetBackedArrays, GPUBackedArrays, IndexNotation]
 ---
 
 ## Abstract
@@ -84,3 +85,4 @@ The Arrays paclet treats the many array representations of the Wolfram Language 
 - [Array Containers](paclet:Wolfram/Arrays/tutorial/ArrayContainers)
 - [Net-Backed Arrays](paclet:Wolfram/Arrays/tutorial/NetBackedArrays)
 - [GPU-Backed Arrays](paclet:Wolfram/Arrays/tutorial/GPUBackedArrays)
+- [Index Notation and Einstein Summation](paclet:Wolfram/Arrays/tutorial/IndexNotation)

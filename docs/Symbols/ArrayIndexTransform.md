@@ -7,6 +7,7 @@ URI: Wolfram/Arrays/ref/ArrayIndexTransform
 Keywords: [index notation, rearrange, reshape, transpose, broadcast, unit axis, container preservation]
 SeeAlso: [ArrayIndexContract, ArrayIndexPattern, ArrayIndexPlan, ReshapeArray, ArrayTranspose, ArrayDimensions, ArrayMaterialize]
 RelatedGuides: [Arrays]
+RelatedTutorials: [IndexNotation]
 ---
 
 ## Usage

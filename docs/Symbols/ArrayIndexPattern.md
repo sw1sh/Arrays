@@ -7,6 +7,7 @@ URI: Wolfram/Arrays/ref/ArrayIndexPattern
 Keywords: [index notation, einsum, descriptor, axis, hygiene, summary box, dialect]
 SeeAlso: [ArrayIndexPlan, ArrayIndexContract, ArrayIndexTransform, ArrayObject, ArrayDimensions]
 RelatedGuides: [Arrays]
+RelatedTutorials: [IndexNotation]
 ---
 
 ## Usage

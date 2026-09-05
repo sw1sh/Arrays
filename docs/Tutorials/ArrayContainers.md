@@ -7,6 +7,7 @@ Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/tutorial/ArrayContainers
 Keywords: [array container, materialization, lazy array, symbolic array, packed array, deferred tree, capability flag]
 RelatedGuides: [Arrays]
+RelatedTutorials: [IndexNotation]
 ---
 
 The Wolfram Language stores arrays in many different containers: plain and packed lists, [SparseArray](), [NumericArray](), structured arrays, unit-carrying and tabular wrappers, interpolating and parametric functions awaiting a parameter, unapplied functions, piecewise arrays, source neural nets, and purely symbolic array objects. The Arrays paclet treats them as one family under a single admission criterion: an expression is an array container when its shape is introspectable without materializing its elements and a materialization path exists. Containers fall into three tiers: explicit (the elements are in memory), lazy (an array-valued expression awaiting parameters) and symbolic (no elements at all, only a name and a shape). This note follows one small vector through four explicit containers, works the lazy and symbolic tiers end to end, and closes with the capability-flag model that separates admission from compute-nativeness.

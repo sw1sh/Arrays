@@ -7,6 +7,7 @@ URI: Wolfram/Arrays/ref/ArrayIndexContract
 Keywords: [index notation, einsum, tensor contraction, trace, hyperedge, batch matrix product, quantity array]
 SeeAlso: [ArrayIndexTransform, ArrayIndexPattern, ArrayIndexPlan, ArrayContract, ArrayTranspose, ArrayMaterialize, ArrayTier, ArrayUnify]
 RelatedGuides: [Arrays]
+RelatedTutorials: [IndexNotation]
 ---
 
 ## Usage

@@ -7,6 +7,7 @@ URI: Wolfram/Arrays/ref/ArrayIndexPlan
 Keywords: [index notation, execution plan, shape inference, axis size, plan steps, compile once, summary box]
 SeeAlso: [ArrayIndexPattern, ArrayIndexContract, ArrayIndexTransform, ArrayDimensions, ReshapeArray, ArrayTranspose, ArrayContract, ArrayMaterialize]
 RelatedGuides: [Arrays]
+RelatedTutorials: [IndexNotation]
 ---
 
 ## Usage

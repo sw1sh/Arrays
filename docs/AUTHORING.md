@@ -51,6 +51,9 @@ adjacent supported case.
 - Author-facing rationale goes in an MTN annotation marker attached to the
   `## Basic Examples` heading, never between an example caption and its code cell:
   `<!-- #| annotation: DD.MM.YY: Design review - ... -->`
+- A tech note has no `## Basic Examples` heading, so its marker rides after the
+  opening paragraph and the TechNote builder drops it: on a tech note the rationale
+  reaches the markdown source of truth and no built page.
 - `## Usage` paragraphs are signatures only. Result-type notes, definitional prose,
   and cross-references belong in `## Details & Options`.
 

@@ -9,6 +9,7 @@ name: Build Paclet
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       mtn_ref:
@@ -88,3 +89,44 @@ jobs:
           name: Wolfram__Arrays-paclet
           path: build/*.paclet
           if-no-files-found: error
+
+  release:
+    name: Release
+    # A tag publishes whatever the build just produced, so the archive attached
+    # to a release is the same file the workflow tested and uploaded rather
+    # than one rebuilt separately.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the .paclet artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Wolfram__Arrays-paclet
+          path: dist
+
+      - name: Check the archive version against the tag
+        # A release tagged for one version carrying an archive built from
+        # another is the one mistake this job can make silently, so the file
+        # name has to agree with the tag before anything is published.
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME#v}"
+          archive=$(ls dist/*.paclet)
+          echo "tag version:     $tag"
+          echo "archive:         $archive"
+          case "$(basename "$archive")" in
+            "Wolfram__Arrays-$tag.paclet") echo "version matches" ;;
+            *) echo "::error::archive $(basename "$archive") does not match tag v$tag"; exit 1 ;;
+          esac
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.paclet \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

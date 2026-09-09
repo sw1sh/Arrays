@@ -40,6 +40,11 @@ jobs:
 
   build:
     name: Build Paclet
+    # Serialized behind the suite deliberately: an on-demand entitlement admits
+    # one kernel launch at a time, so a build that starts while the suite's
+    # kernel is still running is refused the license with "No valid password
+    # found" before it reaches any build step.
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 60
     container:

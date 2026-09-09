@@ -53,10 +53,16 @@ jobs:
         # MarkdownToNotebook parses box structures, evaluates example cells and
         # rasterizes graphical outputs through UsingFrontEnd; the engine ships
         # the front end binary, and these are the shared libraries it links.
+        #
+        # ca-certificates is deliberately NOT installed or upgraded here. The
+        # image carries its own trust store, and letting apt replace it rewrites
+        # /etc/ssl/certs ("14 added, 39 removed"), after which the kernel cannot
+        # reach the licensing server and dies with "No valid password found"
+        # before any of this repository's code runs.
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            ca-certificates curl fontconfig \
+            fontconfig \
             libgl1 libglu1-mesa libxi6 libxrandr2 libxtst6 \
             libxcursor1 libxext6 libxrender1 libxfixes3
 

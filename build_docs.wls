@@ -20,8 +20,6 @@ repoDir = DirectoryName[$InputFileName]
 (* The paclet is nested one level deep: <repo>/Arrays/PacletInfo.wl *)
 pacletDir = FileNameJoin[{repoDir, "Arrays"}]
 
-$mtnSource = "/Users/swish/src/wolfram/AISkills/MarkdownToNotebook.wl"
-
 PacletDirectoryLoad[pacletDir]
 
 Needs["Wolfram`Arrays`"]
@@ -31,15 +29,40 @@ If[ ! NameQ["Wolfram`Arrays`ArrayContainerQ"],
     Exit[1]
 ]
 
-(* Prefer the local MarkdownToNotebook checkout; fall back to the deployed
-   cloud resource when it is absent. *)
+(* MarkdownToNotebook is fetched as a plain .wl from its GitHub repository,
+   over an unauthenticated URL, and that is the only source: a build depends on
+   no checkout beside this one and on no cloud login, so it runs the same way on
+   a development machine and on a runner.  MTN_REF pins the git ref to fetch
+   from; the default is the upstream default branch. *)
 
-mtn = If[ FileExistsQ[$mtnSource],
-    Get[$mtnSource];
-    MarkdownToNotebook,
-    Quiet @ Check[If[! TrueQ[$CloudConnected], CloudConnect[]], Null];
-    ResourceFunction["https://www.wolframcloud.com/obj/nikm/DeployedResources/Function/MarkdownToNotebook"]
+$mtnRef = Replace[Environment["MTN_REF"], Except[_String] -> "main"]
+
+$mtnURL = StringJoin[
+    "https://raw.githubusercontent.com/WolframInstitute/MarkdownToNotebook/",
+    $mtnRef,
+    "/MarkdownToNotebook.wl"
 ]
+
+fetchMarkdownToNotebook[] := Module[{response, body, file},
+    response = Quiet @ Check[URLRead[HTTPRequest[$mtnURL], {"StatusCode", "Body"}], $Failed];
+    If[ ! AssociationQ[response] || response["StatusCode"] =!= 200,
+        Print["FATAL: could not fetch MarkdownToNotebook from ", $mtnURL];
+        Print["  ", Replace[response, {a_Association :> {"status", a["StatusCode"]}, other_ :> other}]];
+        Exit[1]
+    ];
+    body = response["Body"];
+    If[ ! StringQ[body] || ! StringContainsQ[body, "MarkdownToNotebook"],
+        Print["FATAL: the response from ", $mtnURL, " is not the package file."];
+        Exit[1]
+    ];
+    file = FileNameJoin[{$TemporaryDirectory, "MarkdownToNotebook-" <> $mtnRef <> ".wl"}];
+    Export[file, body, "Text", CharacterEncoding -> "UTF-8"];
+    Get[file];
+    Print["  MarkdownToNotebook fetched from ", $mtnRef, " (", StringLength[body], " bytes)"];
+    MarkdownToNotebook
+]
+
+mtn = fetchMarkdownToNotebook[]
 
 subdir = <|
     "Symbol" -> {"Documentation", "English", "ReferencePages", "Symbols"},
@@ -113,22 +136,34 @@ Scan[buildDoc, Sort @ FileNames["*.md", FileNameJoin[{repoDir, "docs"}], Infinit
 
 Print["refreshing the definition notebook's paclet file list"]
 
-Needs["DefinitionNotebookClient`"]
-
 defNb = FileNameJoin[{pacletDir, "ResourceDefinition.nb"}]
 
-If[ FileExistsQ[defNb],
-    Module[{count},
-        count = UsingFrontEnd @ Block[{nbo, n},
-            nbo = NotebookOpen[defNb, Visible -> False];
-            DefinitionNotebookClient`RefreshFileTreeCells["Paclet", nbo, pacletDir, "PacletFiles"];
-            NotebookSave[nbo];
-            NotebookClose[nbo];
-            Length @ StringCases[Import[defNb, "Text"], ".nb\"" | ".wl\""]
-        ];
-        Print["  file entries now listed: ", count]
-    ],
-    Print["  (no ResourceDefinition.nb yet)"]
+(* The refresh matters to repository submission alone: the panel's file list is
+   what SubmitRepository packs. A kernel that cannot load the client or reach a
+   front end still leaves every generated notebook on disk, so the paclet
+   archive is unaffected - report and continue rather than fail the build. *)
+Which[
+    ! FileExistsQ[defNb],
+        Print["  (no ResourceDefinition.nb yet)"],
+    FailureQ[Quiet @ Check[Needs["DefinitionNotebookClient`"], $Failed]],
+        Print["  (DefinitionNotebookClient is unavailable; the file list is refreshed at submission)"],
+    True,
+        Module[{count},
+            count = Quiet @ Check[
+                UsingFrontEnd @ Block[{nbo},
+                    nbo = NotebookOpen[defNb, Visible -> False];
+                    DefinitionNotebookClient`RefreshFileTreeCells["Paclet", nbo, pacletDir, "PacletFiles"];
+                    NotebookSave[nbo];
+                    NotebookClose[nbo];
+                    Length @ StringCases[Import[defNb, "Text"], ".nb\"" | ".wl\""]
+                ],
+                $Failed
+            ];
+            If[ IntegerQ[count],
+                Print["  file entries now listed: ", count],
+                Print["  (the front end refresh did not run; the file list is refreshed at submission)"]
+            ]
+        ]
 ]
 
 Print["done"]

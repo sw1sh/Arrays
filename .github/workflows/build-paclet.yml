@@ -1,0 +1,79 @@
+name: Build Paclet
+
+# Builds the .paclet artifact with no Wolfram Cloud dependency: the kernel is
+# licensed through an on-demand entitlement, MarkdownToNotebook is fetched as a
+# plain .wl from its GitHub repository, and nothing in the build connects to
+# the cloud. The test job runs the suite beside the build without gating the
+# artifact on it.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mtn_ref:
+        description: MarkdownToNotebook git ref to fetch the .wl from
+        required: false
+        default: main
+
+concurrency:
+  group: build-paclet-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WOLFRAMSCRIPT_ENTITLEMENTID: ${{ secrets.WOLFRAMSCRIPT_ENTITLEMENTID }}
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: wolframresearch/wolframengine:latest
+      options: --user root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run the suite
+        run: wolframscript -f Tests/RunTests.wls
+
+  build:
+    name: Build Paclet
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: wolframresearch/wolframengine:latest
+      options: --user root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install front-end libraries
+        # MarkdownToNotebook parses box structures, evaluates example cells and
+        # rasterizes graphical outputs through UsingFrontEnd; the engine ships
+        # the front end binary, and these are the shared libraries it links.
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl fontconfig \
+            libgl1 libglu1-mesa libxi6 libxrandr2 libxtst6 \
+            libxcursor1 libxext6 libxrender1 libxfixes3
+
+      - name: Build documentation notebooks
+        # build_docs.wls fetches MarkdownToNotebook from GitHub itself, so this
+        # is the same command a developer runs and there is no second fetch
+        # path that only CI exercises.
+        env:
+          MTN_REF: ${{ inputs.mtn_ref || 'main' }}
+        run: wolframscript -f build_docs.wls
+
+      - name: Build the paclet archive
+        run: wolframscript -f build_paclet.wls
+
+      - name: Upload the .paclet artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wolfram__Arrays-paclet
+          path: build/*.paclet
+          if-no-files-found: error

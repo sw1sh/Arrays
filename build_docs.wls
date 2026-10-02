@@ -150,18 +150,34 @@ Which[
     True,
         Module[{count},
             count = Quiet @ Check[
-                UsingFrontEnd @ Block[{nbo},
+                UsingFrontEnd @ Block[{nbo, tree, ids},
                     nbo = NotebookOpen[defNb, Visible -> False];
+                    (* The submission check scrapes the file tree into an
+                       association keyed by CellID and finds PacletInfo.wl
+                       through it, so a tree cell with no CellID is invisible
+                       to the check, which then reports NoPacletInfoFileCell.
+                       The cells are created by the refresh, and the front end
+                       stamps a CellID on a new cell only where CreateCellID is
+                       on; the generated notebook does not set it, so it is set
+                       here, before the refresh creates them. *)
+                    SetOptions[nbo, CreateCellID -> True];
                     DefinitionNotebookClient`RefreshFileTreeCells["Paclet", nbo, pacletDir, "PacletFiles"];
+                    tree = Cells[nbo, CellTags -> "FileManager-PacletFiles"];
+                    ids = CurrentValue[tree, CellID];
                     NotebookSave[nbo];
                     NotebookClose[nbo];
-                    Length @ StringCases[Import[defNb, "Text"], ".nb\"" | ".wl\""]
+                    {Length[ids], AllTrue[ids, IntegerQ[#] && # > 0 &] && DuplicateFreeQ[ids]}
                 ],
                 $Failed
             ];
-            If[ IntegerQ[count],
-                Print["  file entries now listed: ", count],
-                Print["  (the front end refresh did not run; the file list is refreshed at submission)"]
+            Which[
+                MatchQ[count, {_Integer, True}],
+                    Print["  file tree cells, each with a CellID: ", First[count]],
+                MatchQ[count, {_Integer, False}],
+                    Print["  WARNING: ", First[count], " file tree cells, not all with a distinct CellID; ",
+                        "the submission check will not find PacletInfo.wl"],
+                True,
+                    Print["  (the front end refresh did not run; the file list is refreshed at submission)"]
             ]
         ]
 ]

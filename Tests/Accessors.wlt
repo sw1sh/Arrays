@@ -101,6 +101,78 @@ VerificationTest[
     TestID -> "accessors-materialize-bare-interpolatingfunction-unapplied-components"
 ]
 
+(* A grid that repeats an abscissa marks a discontinuity of the solution, and
+   Interpolation refuses a repeated abscissa outright.  Fixtures for the three
+   ways NDSolve produces one: a restart at the edge of a pulse, whose repeated
+   time carries the state before the pulse's last step and the state after it;
+   an event that resets the state; and an event that sets the state to itself,
+   which repeats the time with the same value on both sides. *)
+$pulseIf = NDSolveValue[{ps'[pT] == -I (Piecewise[{{Pi/0.01, Abs[pT - 50] < 0.005}}, 0]/2) {{0, 1}, {1, 0}} . ps[pT],
+    ps[0] == {1. + 0. I, 0.},
+    WhenEvent[pT == 49.995 - 10^-7, "RestartIntegration"], WhenEvent[pT == 50.005 - 10^-7, "RestartIntegration"]}, ps, {pT, 0, 100}]
+$pulseEdge = 50.00500000000011
+$resetIf = NDSolveValue[{rx'[rT] == {1, 1}, rx[0] == {0., 0.}, WhenEvent[rT == 1, rx[rT] -> {0., 0.}]}, rx, {rT, 0, 2}]
+$sameIf = NDSolveValue[{sx'[sT] == {1, 2}, sx[0] == {0., 0.}, WhenEvent[sT == 1, sx[sT] -> sx[sT]]}, sx, {sT, 0, 2}]
+
+(* The two values at the repeated time differ - the fixture is what it claims -
+   and the expansion reproduces the solution exactly at that time, where the
+   interpolant takes the left value, and just past it, where it takes the right
+   one; keeping only the first value there would put the pre-step state onto
+   the far side of the edge. *)
+VerificationTest[
+    With[{expansion = ArrayMaterialize[$pulseIf[tau]], grid = Flatten[$pulseIf["Grid"]]},
+        {
+            Count[grid, $pulseEdge],
+            Length[DeleteDuplicates[Pick[$pulseIf["ValuesOnGrid"], grid, $pulseEdge]]],
+            Max[Abs[(expansion /. tau -> $pulseEdge) - $pulseIf[$pulseEdge]]],
+            Max[Abs[(expansion /. tau -> 50.01) - $pulseIf[50.01]]],
+            Max[Abs[(expansion /. tau -> 100.) - $pulseIf[100.]]],
+            TrueQ[Max[Abs[(expansion /. tau -> 50.002) - $pulseIf[50.002]]] < 1*^-5]
+        }
+    ],
+    {2, 2, 0., 0., 0., True},
+    TestID -> "accessors-materialize-interpolatingfunction-across-a-restart"
+]
+
+(* A reset jumps the solution: the interpolant is left-continuous at the reset
+   time and the expansion agrees with it on both sides. *)
+VerificationTest[
+    With[{expansion = ArrayMaterialize[$resetIf[tau]]},
+        Max[Abs[(expansion /. tau -> #) - $resetIf[#]]] & /@ {0.5, 0.999, 1., 1.001, 1.5}
+    ],
+    {0., 0., 0., _?(# < 1*^-12 &), 0.},
+    SameTest -> MatchQ,
+    TestID -> "accessors-materialize-interpolatingfunction-across-a-state-reset"
+]
+
+(* The bare form across the same jump: its components stay unapplied, as
+   functions joining the runs, and they agree with the solution on both sides. *)
+VerificationTest[
+    With[{expansion = ArrayMaterialize[$resetIf]},
+        {
+            Union[Head /@ expansion],
+            Through[expansion[1.]],
+            TrueQ[Max[Abs[Through[expansion[1.001]] - $resetIf[1.001]]] < 1*^-12]
+        }
+    ],
+    {{Function}, $resetIf[1.], True},
+    TestID -> "accessors-materialize-bare-interpolatingfunction-across-a-state-reset"
+]
+
+(* A repeat that carries the same value on both sides is no discontinuity: each
+   component is still one interpolant over the whole grid. *)
+VerificationTest[
+    With[{expansion = ArrayMaterialize[$sameIf[tau]]},
+        {
+            Count[Flatten[$sameIf["Grid"]], 1.],
+            Union[Head[Head[#]] & /@ expansion],
+            TrueQ[Max[Abs[(expansion /. tau -> 1.5) - $sameIf[1.5]]] < 1*^-12]
+        }
+    ],
+    {2, {InterpolatingFunction}, True},
+    TestID -> "accessors-materialize-interpolatingfunction-same-value-repeat-is-one-interpolant"
+]
+
 VerificationTest[
     ArrayMaterialize[$mat],
     $mat,

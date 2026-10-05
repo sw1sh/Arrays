@@ -297,11 +297,61 @@ interpolatingDimensions[f_InterpolatingFunction] := Replace[f["OutputDimensions"
 interpolatingDimensions[_] := {}
 
 
+(* === interpolating a value grid ===
+
+   NDSolve repeats an abscissa where the solution it represents is
+   discontinuous - an event that resets the state, or a restart at a
+   discontinuity of the equations: one run of the grid ends at t, the next run
+   starts at the same t, and the two carry different values.  The interpolant is
+   left-continuous there, taking the left run's value at t itself and the right
+   run's above it.  Interpolation refuses a repeated abscissa outright, so the
+   grid is interpolated run by run and the runs are joined as the interpolant
+   joins them, by a Piecewise selecting the run whose interval holds the
+   argument; Piecewise holds its branches, so only the selected run is
+   evaluated, and only inside its own interval.  Keeping one value per abscissa
+   instead would be wrong on one side of every jump - at the edge of a pulse the
+   first value at the repeated time is the state before the pulse's last step and
+   the second the state after it.  A repeat carrying the same value on both sides
+   is no discontinuity and is dropped first, so a grid with no jump interpolates
+   to a single InterpolatingFunction, exactly as one with no repeat does. *)
+
+interpolatingOrder[f_InterpolatingFunction] := Replace[f["InterpolationOrder"], {{k_Integer} :> k, k_Integer :> k, _ :> 3}]
+
+
+(* A run of a single point - a repeat at the very start of the grid, or the
+   middle of a threefold repeat - is that value and nothing else; a short run
+   interpolates at the highest order its points support. *)
+
+interpolatingRun[{{_, value_}}, _] := Function[value]
+
+interpolatingRun[run_List, order_Integer] := Interpolation[run, InterpolationOrder -> Min[order, Length[run] - 1]]
+
+
+(* The joining Function is assembled with Apply, not by injecting the branches
+   into a Function written out: an injection renames a bound variable that also
+   occurs free in what it injects, which would leave the branches reading a
+   parameter the Function no longer binds. *)
+
+interpolatingGrid[pairs_List, order_Integer] := Module[{runs, interpolants, branches},
+    runs = If[ DuplicateFreeQ[pairs[[All, 1]]],
+        {pairs},
+        Split[DeleteDuplicates[pairs], First[#1] =!= First[#2] &]
+    ];
+    interpolants = interpolatingRun[#, order] & /@ runs;
+    If[ Length[interpolants] === 1,
+        First[interpolants],
+        branches = MapThread[{#1[\[FormalT]], \[FormalT] <= #2} &, {Most[interpolants], Most[runs][[All, -1, 1, 1]]}];
+        Function @@ {\[FormalT], Piecewise[branches, Last[interpolants][\[FormalT]]]}
+    ]
+]
+
+
 (* Per-scalar expansion of a single-parameter array-valued InterpolatingFunction
-   application, ported from the QuantumFramework ExpandInterpolatingFunction. *)
+   application, ported from the QuantumFramework ExpandInterpolatingFunction:
+   every component is interpolated over the grid on its own. *)
 
 interpolatingMaterialize[(f_InterpolatingFunction)[parameter_]] := Map[
-    Interpolation[Thread[{f["Grid"], #}], InterpolationOrder -> f["InterpolationOrder"]][parameter] &,
+    interpolatingGrid[Thread[{f["Grid"], #}], interpolatingOrder[f]][parameter] &,
     Transpose[f["ValuesOnGrid"], InversePermutation[Cycles[{Range[Length[f["OutputDimensions"]] + 1]}]]],
     {-2}
 ]
@@ -314,7 +364,7 @@ interpolatingMaterialize[(f_InterpolatingFunction)[parameter_]] := Map[
    interpolation accuracy between the grid points and exactly at them. *)
 
 interpolatingMaterialize[f_InterpolatingFunction ? interpolatingBareQ] := Map[
-    Interpolation[Thread[{f["Grid"], #}], InterpolationOrder -> f["InterpolationOrder"]] &,
+    interpolatingGrid[Thread[{f["Grid"], #}], interpolatingOrder[f]] &,
     Transpose[f["ValuesOnGrid"], InversePermutation[Cycles[{Range[Length[f["OutputDimensions"]] + 1]}]]],
     {-2}
 ]
@@ -326,11 +376,15 @@ interpolatingMaterialize[expr_] := indexedMaterialize[expr]
    and reinterpolates.  It declines - and the caller then leaves its operation
    unevaluated rather than guessing - when g takes the grid values out of the
    numeric domain, because an Interpolation over non-numeric values is not an
-   InterpolatingFunction at all. *)
+   InterpolatingFunction at all.  It declines as well where the transformed
+   grid still jumps: a rebuild hands back an InterpolatingFunction, and no
+   single one spans a discontinuity, so a structural operation materializes
+   through the run-by-run expansion above instead. *)
 
-interpolatingRebuild[g_, (f_InterpolatingFunction)[parameter_]] := Module[{values = Quiet[Map[g, f["ValuesOnGrid"]]]},
+interpolatingRebuild[g_, (f_InterpolatingFunction)[parameter_]] := Module[{values = Quiet[Map[g, f["ValuesOnGrid"]]], rebuilt},
     If[ ArrayQ[values, _, NumericQ],
-        Interpolation[Thread[{f["Grid"], values}], InterpolationOrder -> f["InterpolationOrder"]][parameter],
+        rebuilt = interpolatingGrid[Thread[{f["Grid"], values}], interpolatingOrder[f]];
+        If[Head[rebuilt] === InterpolatingFunction, rebuilt[parameter], Missing["NotRebuildable"]],
         Missing["NotRebuildable"]
     ]
 ]
@@ -338,9 +392,10 @@ interpolatingRebuild[g_, (f_InterpolatingFunction)[parameter_]] := Module[{value
 (* The bare rebuild is the same grid remap with no application at the end: the
    container is unapplied, so what the rebuild hands back is too. *)
 
-interpolatingRebuild[g_, f_InterpolatingFunction ? interpolatingBareQ] := Module[{values = Quiet[Map[g, f["ValuesOnGrid"]]]},
+interpolatingRebuild[g_, f_InterpolatingFunction ? interpolatingBareQ] := Module[{values = Quiet[Map[g, f["ValuesOnGrid"]]], rebuilt},
     If[ ArrayQ[values, _, NumericQ],
-        Interpolation[Thread[{f["Grid"], values}], InterpolationOrder -> f["InterpolationOrder"]],
+        rebuilt = interpolatingGrid[Thread[{f["Grid"], values}], interpolatingOrder[f]];
+        If[Head[rebuilt] === InterpolatingFunction, rebuilt, Missing["NotRebuildable"]],
         Missing["NotRebuildable"]
     ]
 ]

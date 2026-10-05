@@ -917,4 +917,23 @@ VerificationTest[
     TestID -> "Lazy-applied-InterpolatingFunction-substitution-stays-out-of-the-object"
 ]
 
+(* No single InterpolatingFunction spans a jump in the grid, so the rebuild
+   declines and the transpose materializes through the run-by-run expansion,
+   with the solution's values on both sides of the reset. *)
+VerificationTest[
+    With[{jumpIf = NDSolveValue[{jm'[jT] == {{1., 0.}, {0., 2.}}, jm[0] == {{0., 0.}, {0., 0.}},
+            WhenEvent[jT == 1, jm[jT] -> {{0., 0.}, {0., 0.}}]}, jm, {jT, 0, 2}]},
+        With[{transposed = ArrayTranspose[jumpIf[tau], {2, 1}]},
+            {
+                Head[transposed],
+                Max[Abs[(transposed /. tau -> 0.5) - Transpose[jumpIf[0.5]]]] < 1*^-12,
+                Max[Abs[(transposed /. tau -> 1.) - Transpose[jumpIf[1.]]]] < 1*^-12,
+                Max[Abs[(transposed /. tau -> 1.5) - Transpose[jumpIf[1.5]]]] < 1*^-12
+            }
+        ]
+    ],
+    {List, True, True, True},
+    TestID -> "Lazy-InterpolatingFunction-transpose-across-a-jump-materializes"
+]
+
 EndTestSection[]

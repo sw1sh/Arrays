@@ -11,9 +11,23 @@ $rootDir = DirectoryName[$InputFileName];
    <repo>/Arrays/PacletInfo.wl, tests stay at <repo>/Tests *)
 $pacletDir = FileNameJoin[{$rootDir, "..", "Arrays"}];
 
-(* Uninstall any repo-installed version to ensure local source takes priority *)
-Quiet[PacletUninstall /@ PacletFind["Wolfram/Arrays"]];
+(* The suite tests the source tree and leaves what is installed alone. Other
+   paclets load the installed Wolfram/Arrays - QuantumFramework requires it - so
+   uninstalling it to let the source win would break them for every kernel on
+   the machine until it is reinstalled. PacletDirectoryLoad makes the source
+   available to this kernel only; the paclet that will load is then checked to
+   be the source tree, and a run that would test an installed copy instead
+   stops, naming it, rather than reporting on code it did not test. *)
 PacletDirectoryLoad[$pacletDir];
+With[{loading = PacletObject["Wolfram/Arrays"]},
+    If[ ! PacletObjectQ[loading] || ExpandFileName[loading["Location"]] =!= ExpandFileName[$pacletDir],
+        Print["FATAL: Wolfram/Arrays would load from ",
+            If[PacletObjectQ[loading], loading["Location"] <> " (" <> loading["Version"] <> ")", loading],
+            " rather than the source tree ", ExpandFileName[$pacletDir],
+            "; an installed copy at the source version or above shadows it."];
+        Exit[1]
+    ]
+];
 Needs["Wolfram`Arrays`"];
 
 (* Find test files *)

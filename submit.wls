@@ -30,13 +30,18 @@ Needs["DefinitionNotebookClient`"]
 
 $submitUser = Environment["WOLFRAM_CLOUD_USER"]
 
+(* Every network step below runs inside Block[{$AllowInternet = True}, ...]:
+   the setting is persistent and machine-wide, other kernels on the machine
+   switch it off, and a Block enables the network for this kernel alone without
+   touching the stored value. *)
+
 If[ StringQ[$submitUser] && StringQ[Environment["WOLFRAM_CLOUD_PASSWORD"]],
-    Quiet @ CloudConnect[$submitUser, Environment["WOLFRAM_CLOUD_PASSWORD"]];
+    Block[{$AllowInternet = True}, Quiet @ CloudConnect[$submitUser, Environment["WOLFRAM_CLOUD_PASSWORD"]]];
     If[ $WolframID =!= $submitUser,
         Print["FATAL: could not connect as ", $submitUser, " from WOLFRAM_CLOUD_USER."];
         Exit[1]
     ],
-    If[! TrueQ[$CloudConnected], CloudConnect[]]
+    If[! TrueQ[$CloudConnected], Block[{$AllowInternet = True}, CloudConnect[]]]
 ]
 
 If[ ! TrueQ[$CloudConnected],
@@ -52,7 +57,7 @@ Print["submitting as ", $WolframID]
 
 check = UsingFrontEnd @ Block[{nb, r},
     nb = NotebookOpen[nbFile, Visible -> False];
-    r = DefinitionNotebookClient`CheckDefinitionNotebook[nb];
+    r = Block[{$AllowInternet = True}, DefinitionNotebookClient`CheckDefinitionNotebook[nb]];
     NotebookClose[nb];
     r
 ]
@@ -68,7 +73,7 @@ If[ MemberQ[issues[[All, "Level"]], "Error"],
 
 result = UsingFrontEnd @ Block[{nb, r, DefinitionNotebookClient`ConfirmIssuesDialog = (True &)},
     nb = NotebookOpen[nbFile, Visible -> False];
-    r = DefinitionNotebookClient`SubmitRepository[nb];
+    r = Block[{$AllowInternet = True}, DefinitionNotebookClient`SubmitRepository[nb]];
     NotebookClose[nb];
     r
 ]

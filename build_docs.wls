@@ -44,7 +44,13 @@ $mtnURL = StringJoin[
 ]
 
 fetchMarkdownToNotebook[] := Module[{response, body, file},
-    response = Quiet @ Check[URLRead[HTTPRequest[$mtnURL], {"StatusCode", "Body"}], $Failed];
+    (* $AllowInternet is a persistent, machine-wide setting that other kernels
+       on the machine switch off, so the fetch enables the network for itself
+       alone: a Block changes this kernel's value and leaves the stored one. *)
+    response = Quiet @ Check[
+        Block[{$AllowInternet = True}, URLRead[HTTPRequest[$mtnURL], {"StatusCode", "Body"}]],
+        $Failed
+    ];
     If[ ! AssociationQ[response] || response["StatusCode"] =!= 200,
         Print["FATAL: could not fetch MarkdownToNotebook from ", $mtnURL];
         Print["  ", Replace[response, {a_Association :> {"status", a["StatusCode"]}, other_ :> other}]];

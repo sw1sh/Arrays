@@ -93,6 +93,41 @@ ArrayPart[t_, {}, ___] := t
    clause; the remaining wrappers have no native Transpose and materialize. *)
 ArrayTranspose[t_ ? opaqueWrapperQ, perm_] := ArrayTranspose[ArrayMaterialize[t], perm]
 
+(* A permutation list that repeats a level takes the diagonal over the levels it
+   merges.  Transpose takes down the kernel doing that to a SparseArray when no
+   entry it stores lies on the diagonal - Transpose[SparseArray[{{1, 2} -> 3.,
+   {2, 1} -> 4.}], {1, 1}], and a SparseArray whose background fills the
+   diagonal alike - so the diagonal of a SparseArray is read off its stored
+   entries instead: an entry survives where its indices agree across every
+   group of merged levels and lands at the index the group shares, and the
+   background stays the background.  The levels past the end of a short
+   permutation follow the permuted ones in order, as Transpose places them.  A
+   permutation merging levels of unequal length is left to Transpose, which
+   declines it with Transpose::diagnl and does not reach the diagonal. *)
+sparseDiagonalQ[s_SparseArray, perm_] := MatchQ[perm, {__Integer}] && ! DuplicateFreeQ[perm] &&
+    Length[perm] <= ArrayDepth[s] && Union[perm] === Range[Max[perm]] &&
+    AllTrue[Values[PositionIndex[sparseDiagonalTarget[s, perm]]], SameQ @@ Dimensions[s][[#]] &]
+
+sparseDiagonalTarget[s_SparseArray, perm_List] := Join[perm, Max[perm] + Range[ArrayDepth[s] - Length[perm]]]
+
+sparseDiagonal[s_SparseArray, perm_List] := Module[{target, first, positions, keep},
+    target = sparseDiagonalTarget[s, perm];
+    first = Lookup[First /@ PositionIndex[target], Range[Max[target]]];
+    positions = s["NonzeroPositions"];
+    keep = If[ positions === {},
+        {},
+        Pick[Range[Length[positions]], Unitize[Total[Abs[positions - positions[[All, first[[target]]]]], {2}]], 0]
+    ];
+    SparseArray[
+        If[keep === {}, {}, positions[[keep, first]] -> s["NonzeroValues"][[keep]]],
+        Dimensions[s][[first]],
+        s["Background"]
+    ]
+]
+
+ArrayTranspose[s_SparseArray, perm_List] /; sparseDiagonalQ[s, perm] :=
+    If[ZeroArrayQ[s], {}, SimplifyArray[sparseDiagonal[s, perm]]]
+
 ArrayTranspose[t_, perm_] := If[ZeroArrayQ[t], {}, SimplifyArray @ Transpose[t, Replace[perm, m_ <-> n_ :> Cycles[{{m, n}}]]]]
 
 ArrayTranspose[(Verbatim[Transpose] | Inactive[Transpose])[t_, perm1_], perm2_] := ArrayTranspose[t, PermutationList[PermutationProduct[perm1, perm2]]]
@@ -233,22 +268,12 @@ classAlign[a_, vars_List, order_List] := With[{perm = Lookup[First /@ PositionIn
 ]
 
 (* An operand carrying two slots of one class contributes the diagonal over
-   them, its levels folded onto the given targets.  Transpose with a repeated
-   level takes that diagonal of a List; on a SparseArray it takes down the kernel
-   when the array has nonzero entries and none of them lies on the diagonal, so
-   the diagonal of a SparseArray is read off its nonzero positions instead. *)
+   them, its levels folded onto the given targets: by Transpose for a List, and
+   for a SparseArray by sparseDiagonal, which reads it off the stored entries
+   where Transpose can take down the kernel. *)
 classDiagonal[a_, target_List] /; DuplicateFreeQ[target] := a
 
-classDiagonal[a_SparseArray, target_List] := Module[{first, positions, keep},
-    first = Lookup[First /@ PositionIndex[target], Range[Max[target]]];
-    positions = a["NonzeroPositions"];
-    If[ positions === {}, Return[SparseArray[{}, Dimensions[a][[first]]], Module]];
-    keep = Pick[Range[Length[positions]], Unitize[Total[Abs[positions - positions[[All, first[[target]]]]], {2}]], 0];
-    If[ keep === {},
-        SparseArray[{}, Dimensions[a][[first]]],
-        SparseArray[positions[[keep, first]] -> a["NonzeroValues"][[keep]], Dimensions[a][[first]]]
-    ]
-]
+classDiagonal[a_SparseArray, target_List] := sparseDiagonal[a, target]
 
 classDiagonal[a_, target_List] := Transpose[a, target]
 

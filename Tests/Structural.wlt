@@ -73,6 +73,32 @@ VerificationTest[
     TestID -> "structural-transpose-composition-identity"
 ]
 
+(* A permutation that repeats a level takes a diagonal.  Transpose takes down
+   the kernel doing that to a SparseArray when no stored entry lies on the
+   diagonal - the first three cases, the third a short permutation - and when
+   the background fills it, the fifth, so ArrayTranspose reads the diagonal off
+   the stored entries.  Every value is the dense Transpose's, the background
+   stays the background, and merging levels of unequal length is still
+   declined by Transpose itself. *)
+VerificationTest[
+    With[{
+        offDiagonal = SparseArray[{{1, 2} -> 3., {2, 1} -> 4.}, {2, 2}],
+        rank3 = SparseArray[{{1, 2, 1} -> 3., {2, 1, 2} -> 4.}, {2, 2, 2}],
+        onDiagonal = SparseArray[{{1, 1} -> 2., {1, 2} -> 3.}, {2, 2}],
+        background = SparseArray[{{1, 2} -> 3.}, {2, 2}, 1.]
+    },
+        Append[
+            Map[
+                {Head[ArrayTranspose[#[[1]], #[[2]]]], Normal[ArrayTranspose[#[[1]], #[[2]]]] === Transpose[Normal[#[[1]]], #[[2]]]} &,
+                {{offDiagonal, {1, 1}}, {rank3, {1, 1, 2}}, {rank3, {1, 1}}, {rank3, {1, 2, 1}}, {background, {1, 1}}, {onDiagonal, {1, 1}}}
+            ],
+            Head[Quiet[ArrayTranspose[SparseArray[{{1, 2} -> 3}, {2, 3}], {1, 1}]]]
+        ]
+    ],
+    Append[ConstantArray[{SparseArray, True}, 6], Transpose],
+    TestID -> "structural-transpose-sparse-diagonal-is-read-off-the-stored-entries"
+]
+
 (* An explicit matrix contracts to what TensorContract gives it.  A List
    argument is ONE array and numbers its own levels, so the plain nested-List
    form of this matrix traces identically - pinned in Regressions.wlt. *)

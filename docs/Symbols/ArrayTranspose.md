@@ -20,6 +20,7 @@ RelatedGuides: [Arrays]
 - Explicit containers with a native [Transpose]() keep their container: [SparseArray](), packed arrays, [NumericArray](), structured arrays such as [SymmetrizedArray](), and [QuantityArray]() all transpose without materializing.
 - The remaining wrapper containers ([Tabular](), [Dataset](), [EventSeries](), ...) have no native [Transpose]() and transpose their materialized data, losing the wrapper.
 - Applied to a nested [Transpose]() form, active or [Inactive](), [ArrayTranspose]() composes the two permutations into a single [Transpose]() wrapper instead of stacking them.
+- A permutation list that repeats a level takes the diagonal over the levels it merges, as [Transpose]() does. On a [SparseArray]() the diagonal is read off the stored entries and the background is kept, since [Transpose]() itself terminates the kernel on a [SparseArray]() none of whose stored entries lies on that diagonal.
 - A lazy container transposes the value array at every grid point and reinterpolates, staying lazy: an array-valued [InterpolatingFunction]() applied to a symbolic parameter gives another application, and the bare function gives another unapplied [InterpolatingFunction]().
 - Symbolic containers such as [MatrixSymbol]() stay in unevaluated [Transpose]() form, with trivial wrappers removed by [SimplifyArray]().
 - If any dimension of *a* is 0, the result is the empty array `{}`.
@@ -125,6 +126,24 @@ Normal[permuted][[1]]
 ```
 
 <!-- => {{1, 13}, {5, 17}, {9, 21}} -->
+
+---
+
+A permutation that repeats a level takes a diagonal, which for a [SparseArray]() is read off its stored entries:
+
+```wl
+diagonal = ArrayTranspose[SparseArray[{{1, 2} -> 3., {2, 1} -> 4.}], {1, 1}]
+```
+
+<!-- => a SparseArray summary box: rank 1, dimensions {2}, 0 stored elements -->
+
+Neither stored entry lies on the diagonal:
+
+```wl
+Normal[diagonal]
+```
+
+<!-- => {0, 0} -->
 
 ### Wrapper containers
 

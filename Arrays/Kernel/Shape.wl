@@ -179,18 +179,29 @@ ArrayDimensions[a_ ? lazyContainerQ] := lazyDimensions[a]
    either emit a kernel message or hand back an unevaluated non-List expression
    that an enclosing node propagates - both break the documented "quietly gives
    {}" contract.  Every such clause therefore goes through shapeFromOperands,
-   which answers {} for an unknown operand and validates the result as a plain
-   integer list.  Inactive[TensorProduct] and Plus are the two exceptions and
+   which answers {} for an unknown operand and validates the result as a list
+   of sizes.  Inactive[TensorProduct] and Plus are the two exceptions and
    handle a rank-0 operand themselves: Catenate is the RIGHT answer for a tensor
    product with a scalar, and the Plus clause drops scalars because Plus threads
    over them. *)
+
+(* A shape is a list of sizes, and a size is an integer or a symbolic quantity
+   such as the n of VectorSymbol["v", n].  A leaf reports its symbolic sizes,
+   so a node over it has to carry them, or every tree over a symbolic leaf would
+   lose its shape at its first node.  A list, a number that is not an integer, a
+   Missing and a failure are not sizes, and a result carrying one is the index
+   arithmetic having gone wrong.  The rules below name their pattern shape and
+   not dims: shapeFromOperands has a parameter dims, which would be substituted
+   into a rule naming its pattern dims. *)
+dimensionsQ[shape_] := ListQ[shape] &&
+    AllTrue[shape, IntegerQ[#] || ! ListQ[#] && ! NumericQ[#] && FreeQ[#, _Missing | _Failure | $Failed] &]
 
 SetAttributes[shapeFromOperands, HoldRest]
 
 shapeFromOperands[operandShapes_List, dims_] := If[
     MemberQ[operandShapes, {}],
     {},
-    Quiet[Check[Replace[dims, Except[{___Integer}] :> {}], {}]]
+    Quiet[Check[Replace[dims, shape_ /; ! dimensionsQ[shape] :> {}], {}]]
 ]
 
 (* Inactive[D] is the THIRD clause that handles a rank-0 operand itself rather
@@ -203,7 +214,7 @@ shapeFromOperands[operandShapes_List, dims_] := If[
    for every gradient of a scalar and silently cost the derivative its index. *)
 ArrayDimensions[Inactive[D][t_, {d_List, n : _Integer ? NonNegative : 1}]] :=
     Quiet[Check[
-        Replace[Join[ArrayDimensions[t], ConstantArray[Length[d], n]], Except[{___Integer}] :> {}],
+        Replace[Join[ArrayDimensions[t], ConstantArray[Length[d], n]], shape_ /; ! dimensionsQ[shape] :> {}],
         {}
     ]]
 

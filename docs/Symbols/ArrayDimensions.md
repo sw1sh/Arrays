@@ -24,6 +24,7 @@ RelatedGuides: [Arrays]
 - Symbolic containers give their declared dimensions: the second argument of [VectorSymbol](), [MatrixSymbol]() or [ArraySymbol](), or the dimensions registered for an atomic symbol in `$Assumptions` via [Vectors](), [Matrices]() or [Arrays]() domains.
 - [ArrayDimensions]() recurses structurally through the nodes of a structural tree: <code>[Transpose]()[*t*, *perm*]</code> permutes (or rotates, for an integer, or swaps, for a two-way rule) the dimensions of *t*; <code>[Plus]()</code> keeps the common leading dimensions of its terms; <code>[Inactive]()[[TensorProduct]()]</code> concatenates dimensions; [TensorContract]() and [ArrayContract]() delete the contracted pairs; [Dot]() contracts the last level of each operand with the first of the next; [ArrayDot]() drops the levels its count or its index pairs contract; [ArrayReshape]() states its result shape outright; <code>[Inactive]()[[D]()][*t*, {*params*, *n*}]</code> appends *n* copies of the parameter count.
 - Every node is matched in both its active and its inactive spelling, so the two forms a lowered tensor-network contraction carries report the same shape.
+- A symbolic size, such as the *n* of <code>[VectorSymbol]()["v", *n*]</code>, passes through every node as it does through a leaf. A node whose index arithmetic yields anything other than a list of sizes, integers or symbolic, gives `{}`.
 - A node whose operand has no known shape gives `{}`, and an enclosing node gives `{}` in turn; no index arithmetic runs on an unknown shape.
 - Non-array input, including ragged lists, quietly gives `{}`; no messages leak from the shape probe.
 - A rank-0 scalar also gives `{}`.
@@ -281,6 +282,16 @@ ArrayDimensions[TensorContract[ArraySymbol["S", {2, 3, 2}], {{1, 3}}]]
 ```
 
 <!-- => {3} -->
+
+---
+
+Symbolic sizes pass through a node as they do through a leaf:
+
+```wl
+ArrayDimensions[ArrayDot[ArraySymbol["A", {da, db, dc}], ArraySymbol["B", {dc, db, de}], {{2, 2}}]]
+```
+
+<!-- => {da, dc, dc, de} -->
 
 ---
 

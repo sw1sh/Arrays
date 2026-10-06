@@ -435,6 +435,38 @@ VerificationTest[
     TestID -> "shape-plus-broadcasts-scalar-operand"
 ]
 
+(* A leaf reports its symbolic sizes, and every node over it carries them: a
+   node that validated its result as an integer list gave {} for any tree over
+   a symbolic leaf, so the shape of the tree was lost at its first node.  The
+   integer case of the same contraction is checked beside the symbolic one. *)
+VerificationTest[
+    {
+        ArrayDimensions[ArrayDot[ArraySymbol["A", {da, db, dc}], ArraySymbol["B", {dc, db, de}], {{2, 2}}]],
+        ArrayDimensions[ArrayDot[ArraySymbol["A", {2, 3, 4}], ArraySymbol["B", {4, 3, 5}], {{2, 2}}]],
+        ArrayDimensions[Transpose[MatrixSymbol["M", {p, q}]]],
+        ArrayDimensions[TensorContract[ArraySymbol["S", {p, q, p}], {{1, 3}}]],
+        ArrayDimensions[Dot[MatrixSymbol["M", {p, q}], MatrixSymbol["N", {q, r}]]],
+        ArrayDimensions[Inactive[D][VectorSymbol["v", n], {{p1, p2}}]],
+        ArrayRank[ArrayDot[ArraySymbol["A", {da, db, dc}], ArraySymbol["B", {dc, db, de}], {{2, 2}}]]
+    },
+    {{da, dc, dc, de}, {2, 4, 4, 5}, {q, p}, {q}, {p, r}, {n, 2}, 4},
+    TestID -> "shape-structural-symbolic-sizes-pass-through-nodes"
+]
+
+(* Carrying symbolic sizes does not admit what is not a size: a permutation or
+   a contraction that does not fit the operand, a size that is a number but not
+   an integer, and a size that is Missing all still give {}. *)
+VerificationTest[
+    Quiet[{
+        ArrayDimensions[Transpose[MatrixSymbol["M", {p, q}], {3, 1}]],
+        ArrayDimensions[TensorContract[ArraySymbol["S", {p, q}], {{1, 5}}]],
+        ArrayDimensions[Transpose[ArraySymbol["T", {2.5, 3}]]],
+        ArrayDimensions[TensorContract[ArraySymbol["S", {Missing[], q, q}], {{2, 3}}]]
+    }],
+    {{}, {}, {}, {}},
+    TestID -> "shape-structural-non-sizes-still-give-empty"
+]
+
 EndTestSection[]
 
 

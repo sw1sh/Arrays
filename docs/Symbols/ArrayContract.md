@@ -4,8 +4,8 @@ Name: ArrayContract
 Context: Wolfram`Arrays`
 Paclet: Wolfram/Arrays
 URI: Wolfram/Arrays/ref/ArrayContract
-Keywords: [tensor contraction, trace, tensor product, operand set, array container, symbolic array]
-SeeAlso: [ArrayTranspose, ArrayPart, SimplifyArray, ArrayDimensions, ArrayMaterialize, ArraySymbolicQ, ArrayContainerQ, ArrayUnify, ArrayTier]
+Keywords: [tensor contraction, trace, tensor product, operand set, array container, symbolic array, Kronecker delta, identity, batch index]
+SeeAlso: [ArrayTranspose, ArrayPart, SimplifyArray, ArrayDimensions, ArrayMaterialize, ArraySymbolicQ, ArrayContainerQ, ArrayUnify, ArrayTier, ArrayIndexContract]
 RelatedGuides: [Arrays]
 ---
 
@@ -24,6 +24,8 @@ RelatedGuides: [Arrays]
 - The operands of a node are contracted against each other and the tensor product is never built, which is what keeps the containers: an all-[SparseArray]() set gives a [SparseArray](), packed operands give a packed array, exact operands stay exact, and a [QuantityArray]() set gives a [QuantityArray]() carrying the product of the units.
 - A contraction over a [SparseArray]() whose background is not zero, and one over two structured atoms such as [SymmetrizedArray](), is dense, that being what contracting the operands pairwise gives. A single structured operand keeps its structure, [TensorContract]() preserving [SymmetrizedArray]() structure natively.
 - A node of ONE operand has no product to keep that operand out of, so it is contracted bare and gives what contracting the container itself gives.
+- A [SymbolicDeltaProductArray](), a [SymbolicIdentityArray]() and a [SymbolicOnesArray](), bare or in a node whose other operands are [List]()s, [SparseArray]()s and scalars, are contracted by identifying the indices they tie together and are never expanded. Deltas alone give a delta, values that land on a diagonal of the output give a [SparseArray](), and otherwise the result is the contraction of the remaining operands.
+- An index a delta ties across two operands while keeping a leg of its own is a batch index of the pair, which is multiplied block by block rather than through the tensor product of the two, at the cost of the result. A delta whose groups tie levels of different dimensions contracts through its dense form.
 - The result is a container of the tier [ArrayUnify]() joins the operands to. Explicit operands contract through the node, which evaluates immediately: contracting the two levels of a matrix gives its trace.
 - An operand set carrying a symbolic container gives an inactive [TensorContract]() node, and [ArrayDimensions]() reads the contracted shape off that node without materializing it.
 - An operand set carrying exactly one lazy container and no symbolic one is contracted against the value grid, the branch values or the body of that operand and stays lazy where its head supplies a lazy-preserving rebuild.
@@ -184,6 +186,44 @@ Normal[contracted]
 
 <!-- => {{0, 0}, {0, 1.}} -->
 
+### Delta operands
+
+Contracting one index of a four-way delta with a vector leaves a three-way delta scaled by the vector, held as its two nonzero entries:
+
+```wl
+scaled = ArrayContract[Inactive[TensorProduct][SymbolicDeltaProductArray[{2, 2, 2, 2}, {{1, 2, 3, 4}}], {0.3, 0.7}], {{1, 5}}]
+```
+
+<!-- => a SparseArray summary box: rank 3, dimensions {2, 2, 2}, 2 stored elements -->
+
+The entries sit where every index agrees:
+
+```wl
+Normal[scaled]
+```
+
+<!-- => {{{0.3, 0}, {0, 0}}, {{0, 0}, {0, 0.7}}} -->
+
+---
+
+Two identities compose to the identity, without either being expanded:
+
+```wl
+ArrayContract[Inactive[TensorProduct][SymbolicIdentityArray[{2}], SymbolicIdentityArray[{2}]], {{2, 3}}]
+```
+
+<!-- => SymbolicIdentityArray[{2}] -->
+
+---
+
+A delta tying the first index of two matrices while keeping a leg of its own makes that index a batch index, so contracting the second indices gives the inner product of each pair of rows:
+
+```wl
+ArrayContract[Inactive[TensorProduct][{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}, SymbolicDeltaProductArray[{2, 2, 2}, {{1, 2, 3}}]], {{1, 5}, {3, 6}, {2, 4}}]
+```
+
+<!-- => {17, 53} -->
+
 ### Wrapper containers
 
 A [QuantityArray]() contracts natively, so the trace of a matrix of lengths is a length:
@@ -313,6 +353,24 @@ ArrayContract[Inactive[TensorProduct][{}, {1, 2}], {{1, 2}}]
 <!-- => {} -->
 
 ## Possible Issues
+
+Evaluating an expression that holds a [SymbolicIdentityArray]() or another symbolic delta unpacks every packed array beside it, a node included:
+
+```wl
+Developer`PackedArrayQ[First[Inactive[TensorProduct][Developer`ToPackedArray[{1., 2.}], SymbolicIdentityArray[{2}]]]]
+```
+
+<!-- => False -->
+
+[ArrayContract]() packs a [List]() operand again before contracting it, so a packed operand gives a packed result:
+
+```wl
+Developer`PackedArrayQ[ArrayContract[Inactive[TensorProduct][Developer`ToPackedArray[{1., 2.}], SymbolicIdentityArray[{2}]], {{1, 2}}]]
+```
+
+<!-- => True -->
+
+---
 
 A list of array containers is declined, a [List]() argument already meaning one array:
 

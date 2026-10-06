@@ -562,6 +562,234 @@ VerificationTest[
 EndTestSection[]
 
 
+(* === Delta operands ===
+
+   A SymbolicDeltaProductArray, a SymbolicIdentityArray and a SymbolicOnesArray
+   are contracted by identifying the indices they tie together, and are never
+   expanded.  Every value below is checked against the operands' own arithmetic
+   on their dense forms - Normal, TensorProduct, Dot - never against the
+   contraction being tested. *)
+
+BeginTestSection["structural - delta operands"]
+
+(* A k-way delta on two-valued indices has two nonzero entries out of 2^k, and
+   contracting one of its indices with a vector leaves the (k-1)-way delta
+   scaled by that vector: two entries, where the dense contraction writes
+   2^(k-1).  The ByteCount is the check - 2^23 machine reals is 64MB. *)
+VerificationTest[
+    With[{r = ArrayContract[
+            Inactive[TensorProduct][SymbolicDeltaProductArray[ConstantArray[2, 24], {Range[24]}], {0.3, 0.7}],
+            {{1, 25}}
+        ]},
+        {
+            Head[r],
+            Dimensions[r],
+            r["NonzeroPositions"] === {ConstantArray[1, 23], ConstantArray[2, 23]},
+            r["NonzeroValues"],
+            ByteCount[r] < 10^4
+        }
+    ],
+    {SparseArray, ConstantArray[2, 23], True, {0.3, 0.7}, True},
+    TestID -> "delta-k-way-delta-against-a-vector-stays-two-entries"
+]
+
+(* Deltas alone contract to a delta: two identities compose to the identity,
+   two three-way deltas sharing an index join into a four-way one, a full trace
+   is a number, and a partial trace is the remaining identity scaled by the
+   dimension traced out, a SparseArray since nothing scales a delta in place. *)
+VerificationTest[
+    {
+        ArrayContract[Inactive[TensorProduct][SymbolicIdentityArray[{2, 3}], SymbolicIdentityArray[{2, 3}]], {{3, 5}, {4, 6}}],
+        ArrayContract[
+            Inactive[TensorProduct][SymbolicDeltaProductArray[{2, 2, 2}, {{1, 2, 3}}], SymbolicDeltaProductArray[{2, 2, 2}, {{1, 2, 3}}]],
+            {{3, 4}}
+        ],
+        ArrayContract[SymbolicIdentityArray[{2, 3}], {{1, 3}, {2, 4}}],
+        With[{r = ArrayContract[SymbolicIdentityArray[{2, 3}], {{1, 3}}]}, {Head[r], Normal[r] === 2 IdentityMatrix[3]}]
+    },
+    {
+        SymbolicIdentityArray[{2, 3}],
+        SymbolicDeltaProductArray[{2, 2, 2, 2}, {{1, 2, 3, 4}}],
+        6,
+        {SparseArray, True}
+    },
+    TestID -> "delta-deltas-alone-contract-to-a-delta"
+]
+
+(* A slot in no group is unconstrained, and a SymbolicOnesArray is the delta
+   with no groups at all: summing an index no operand carries is a factor of
+   its dimension, and an output index no operand carries is an axis of ones. *)
+VerificationTest[
+    {
+        ArrayContract[SymbolicDeltaProductArray[{2, 2, 2}, {{1, 3}}], {{1, 3}}],
+        ArrayContract[Inactive[TensorProduct][SymbolicOnesArray[{3}], {1, 2, 3}], {{1, 2}}],
+        ArrayContract[Inactive[TensorProduct][SymbolicOnesArray[{2, 3}], {1, 2, 3}], {{2, 3}}]
+    },
+    {
+        TensorContract[Normal[SymbolicDeltaProductArray[{2, 2, 2}, {{1, 3}}]], {{1, 3}}],
+        Normal[SymbolicOnesArray[{3}]] . {1, 2, 3},
+        Normal[SymbolicOnesArray[{2, 3}]] . {1, 2, 3}
+    },
+    TestID -> "delta-unconstrained-slots-and-ones-are-factors-and-axes-of-ones"
+]
+
+(* The identity against a matrix is the matrix, and a packed one comes back
+   packed: the node the identity arrives in has unpacked it, the evaluator
+   unpacking every packed array beside a symbolic delta, and the contraction
+   packs it again. *)
+VerificationTest[
+    With[{m = Developer`ToPackedArray[{{1., 2.}, {3., 4.}}]},
+        With[{r = ArrayContract[Inactive[TensorProduct][SymbolicIdentityArray[{2}], m], {{2, 3}}]},
+            {r, Developer`PackedArrayQ[r]}
+        ]
+    ],
+    {{{1., 2.}, {3., 4.}}, True},
+    TestID -> "delta-identity-against-a-matrix-is-the-matrix-packed"
+]
+
+(* A delta tying a slot of one operand to a slot of another while keeping a leg
+   of its own makes that index a BATCH index of the pair: x[b, q, r] against
+   y[b, r, s] is a matrix product per b, with the delta's leg last.  The pair is
+   multiplied block by block rather than through its tensor product, and the
+   shapes cover each way the blocks are multiplied - a single block, many blocks
+   of a few entries, a few large blocks, and sparse operands, which stay sparse. *)
+VerificationTest[
+    BlockRandom[
+        SeedRandom[7];
+        Map[
+            Function[shape,
+                With[{x = RandomReal[1, shape[[{1, 2, 3}]]], y = RandomReal[1, shape[[{1, 3, 4}]]],
+                        d = SymbolicDeltaProductArray[ConstantArray[shape[[1]], 3], {{1, 2, 3}}]},
+                    With[{want = Transpose[MapThread[Dot, {x, y}], {3, 1, 2}]},
+                        {
+                            Max[Abs[ArrayContract[Inactive[TensorProduct][x, y, d], {{1, 7}, {4, 8}, {3, 5}}] - want]] < 10^-12,
+                            With[{r = ArrayContract[
+                                    Inactive[TensorProduct][SparseArray[Round[x]], SparseArray[Round[y]], d],
+                                    {{1, 7}, {4, 8}, {3, 5}}
+                                ]},
+                                {Head[r], Normal[r] === Transpose[MapThread[Dot, {Round[x], Round[y]}], {3, 1, 2}]}
+                            ]
+                        }
+                    ]
+                ]
+            ],
+            {{1, 3, 2, 4}, {300, 1, 2, 2}, {300, 3, 2, 3}, {3, 16, 4, 70}}
+        ]
+    ],
+    ConstantArray[{True, {SparseArray, True}}, 4],
+    TestID -> "delta-a-shared-kept-index-is-a-batch-index-of-the-pair"
+]
+
+(* One delta tying an index of three operands is a hyperedge: summed when the
+   delta has no leg of its own, kept as the leg when it has one. *)
+VerificationTest[
+    With[{x = {{1, -2, 3, 0}, {2, 1, -1, 4}, {0, 3, 2, -2}}, y = {{1, 0, 2, -1, 3}, {-2, 1, 0, 2, 1}, {3, -1, 1, 0, 2}}, z = {2, -1, 3}},
+        {
+            ArrayContract[
+                Inactive[TensorProduct][x, y, z, SymbolicDeltaProductArray[{3, 3, 3}, {{1, 2, 3}}]],
+                {{1, 6}, {3, 7}, {5, 8}}
+            ] === Sum[z[[b]] TensorProduct[x[[b]], y[[b]]], {b, 3}],
+            ArrayContract[
+                Inactive[TensorProduct][x, y, z, SymbolicDeltaProductArray[{3, 3, 3, 3}, {{1, 2, 3, 4}}]],
+                {{1, 6}, {3, 7}, {5, 8}}
+            ] === Transpose[Table[z[[b]] TensorProduct[x[[b]], y[[b]]], {b, 3}], {3, 1, 2}]
+        }
+    ],
+    {True, True},
+    TestID -> "delta-a-hyperedge-across-three-operands-is-summed-or-kept"
+]
+
+(* An operand two of whose slots fall in one class contributes its diagonal.
+   On a SparseArray that diagonal is read off the nonzero positions: Transpose
+   with a repeated level takes down the kernel when the array has nonzero
+   entries and none of them lies on the diagonal, as here. *)
+VerificationTest[
+    ArrayContract[
+        Inactive[TensorProduct][SparseArray[{{1, 2} -> 3., {2, 1} -> 4.}, {2, 2}], SymbolicIdentityArray[{2}]],
+        {{1, 3}, {2, 4}}
+    ] == Tr[Normal[SparseArray[{{1, 2} -> 3., {2, 1} -> 4.}, {2, 2}]]],
+    True,
+    TestID -> "delta-a-sparse-diagonal-with-nothing-on-it-is-read-safely"
+]
+
+(* Scalars are factors, exact values stay exact and a symbolic factor is
+   carried. *)
+VerificationTest[
+    ArrayContract[Inactive[TensorProduct][g, SymbolicIdentityArray[{2}], {1/2, 1/3}], {{2, 3}}],
+    {g / 2, g / 3},
+    TestID -> "delta-scalar-factors-and-exact-values-are-carried"
+]
+
+(* A delta whose groups tie levels of different dimensions is outside the
+   identification - no single index runs over both - and contracts through its
+   dense form. *)
+VerificationTest[
+    ArrayContract[Inactive[TensorProduct][SymbolicDeltaProductArray[{2, 3}, {{1, 2}}], {1, 2, 3}], {{2, 3}}],
+    Normal[SymbolicDeltaProductArray[{2, 3}, {{1, 2}}]] . {1, 2, 3},
+    TestID -> "delta-groups-across-dimensions-contract-the-dense-form"
+]
+
+(* Random operand sets - one or two deltas of every kind beside dense, sparse
+   and scalar operands - against random slot groups, each compared with the
+   contraction of the dense forms. *)
+VerificationTest[
+    BlockRandom[
+        SeedRandom[20261006];
+        Module[{reference, randomDelta, randomPartner, randomGroups, cases},
+            reference[arrays_, c_] := Module[{tensors, full, free, target},
+                tensors = Normal /@ Select[arrays, ArrayDepth[Normal[#]] > 0 &];
+                full = If[Length[tensors] === 1, First[tensors], TensorProduct @@ tensors];
+                free = Complement[Range[ArrayDepth[full]], Flatten[c]];
+                target = ConstantArray[0, ArrayDepth[full]];
+                target[[free]] = Range[Length[free]];
+                MapIndexed[(target[[#1]] = Length[free] + First[#2]) &, c];
+                (Times @@ Select[arrays, ArrayDepth[Normal[#]] === 0 &]) *
+                    If[c === {}, Transpose[full, target], Total[Transpose[full, target], {Length[free] + 1, Length[free] + Length[c]}]]
+            ];
+            randomDelta[] := With[{r = RandomInteger[{1, 4}], d = RandomChoice[{2, 3}]},
+                RandomChoice[{
+                    SymbolicDeltaProductArray[ConstantArray[d, r],
+                        Select[TakeList[RandomSample[Range[r]], RandomChoice[IntegerPartitions[r]]], Length[#] > 1 &]],
+                    SymbolicIdentityArray[RandomChoice[{2, 3}, RandomInteger[{1, 2}]]],
+                    SymbolicOnesArray[RandomChoice[{2, 3}, RandomInteger[{1, 2}]]]
+                }]
+            ];
+            randomPartner[] := With[{dims = RandomChoice[{2, 3}, RandomInteger[{1, 3}]]},
+                RandomChoice[{
+                    RandomInteger[{-3, 3}, dims],
+                    SparseArray[RandomInteger[{-3, 3}, dims] RandomInteger[{0, 1}, dims]],
+                    RandomInteger[{1, 4}]
+                }]
+            ];
+            randomGroups[arrays_] := Module[{dims = Join @@ (Dimensions[Normal[#]] & /@ arrays), slots, groups = {}},
+                slots = RandomSample[Range[Length[dims]]];
+                While[slots =!= {} && RandomReal[] < 0.75,
+                    With[{g = Take[slots, UpTo[RandomChoice[{1, 2, 2, 2, 3}]]]},
+                        slots = Drop[slots, Length[g]];
+                        If[SameQ @@ dims[[g]], AppendTo[groups, g]]
+                    ]
+                ];
+                groups
+            ];
+            cases = Select[
+                Table[RandomSample[Join[Table[randomDelta[], RandomInteger[{1, 2}]], Table[randomPartner[], RandomInteger[{0, 3}]]]], 400],
+                Total[ArrayDepth[Normal[#]] & /@ #] <= 9 &
+            ];
+            Count[
+                cases,
+                arrays_ /; With[{c = randomGroups[arrays]},
+                    Normal[ArrayContract[Inactive[TensorProduct] @@ arrays, c]] =!= reference[arrays, c]
+                ]
+            ]
+        ]
+    ],
+    0,
+    TestID -> "delta-random-operand-sets-match-the-dense-contraction"
+]
+
+EndTestSection[]
+
+
 BeginTestSection["structural - container preservation"]
 
 VerificationTest[

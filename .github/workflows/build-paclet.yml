@@ -1,10 +1,9 @@
 name: Build Paclet
 
-# Builds the .paclet artifact with no Wolfram Cloud dependency: the kernel is
-# licensed through an on-demand entitlement, MarkdownToNotebook is fetched as a
-# plain .wl from its GitHub repository, and nothing in the build connects to
-# the cloud. The test job runs the suite beside the build without gating the
-# artifact on it.
+# Builds the .paclet artifact with PacletPage and no Wolfram Cloud dependency:
+# the kernel is licensed through an on-demand entitlement, pacletpage.wl fetches
+# PacletPage and MarkdownToNotebook from their GitHub repositories, and nothing
+# in the build connects to the cloud. The build runs behind the test suite.
 
 on:
   push:
@@ -16,6 +15,10 @@ on:
         description: MarkdownToNotebook git ref to fetch the .wl from
         required: false
         default: main
+      pacletpage_ref:
+        description: PacletPage git ref to fetch, by default the tag pacletpage.wl pins
+        required: false
+        default: ''
 
 concurrency:
   group: build-paclet-${{ github.ref }}
@@ -73,21 +76,29 @@ jobs:
             libxcursor1 libxext6 libxrender1 libxfixes3
 
       - name: Build documentation notebooks
-        # build_docs.wls fetches MarkdownToNotebook from GitHub itself, so this
-        # is the same command a developer runs and there is no second fetch
-        # path that only CI exercises.
+        # build.wls fetches PacletPage and MarkdownToNotebook from GitHub
+        # itself, so this is the same command a developer runs and there is no
+        # second fetch path that only CI exercises.
         env:
           MTN_REF: ${{ inputs.mtn_ref || 'main' }}
-        run: wolframscript -f build_docs.wls
+          PACLETPAGE_REF: ${{ inputs.pacletpage_ref }}
+        run: wolframscript -f build.wls
 
       - name: Build the paclet archive
-        run: wolframscript -f build_paclet.wls
+        # A dry run with no cloud connection builds the archive into
+        # Arrays/build and checks that it holds every documentation page and
+        # loads alone in a fresh kernel, which is the archive a submission
+        # would send.
+        env:
+          MTN_REF: ${{ inputs.mtn_ref || 'main' }}
+          PACLETPAGE_REF: ${{ inputs.pacletpage_ref }}
+        run: wolframscript -f submit.wls --dry-run
 
       - name: Upload the .paclet artifact
         uses: actions/upload-artifact@v4
         with:
           name: Wolfram__Arrays-paclet
-          path: build/*.paclet
+          path: Arrays/build/*.paclet
           if-no-files-found: error
 
   release:

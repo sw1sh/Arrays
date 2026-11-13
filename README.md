@@ -57,8 +57,16 @@ Run the tests:
 wolframscript -f Tests/RunTests.wls
 ```
 
-Build the documentation:
+Build the documentation and the paclet with [PacletPage](https://github.com/WolframInstitute/PacletPage),
+which `pacletpage.wl` fetches from GitHub together with
+[MarkdownToNotebook](https://github.com/WolframInstitute/MarkdownToNotebook):
 
 ```
-wolframscript -f build_docs.wls
+wolframscript -f build.wls                # docs/ into Arrays/Documentation and Arrays/ResourceDefinition.nb
+wolframscript -f submit.wls --dry-run     # the archive in Arrays/build, checked to hold every page and to load
+wolframscript -f submit.wls               # the submission to the Paclet Repository
 ```
+
+`PACLETPAGE_REF` and `MTN_REF` pick the refs the two are fetched at, and `PACLETPAGE_PARALLEL` a
+number of parallel kernels for the pages. A submission runs in a kernel connected to the Wolfram
+Cloud as an account that owns the publisher `Wolfram`.

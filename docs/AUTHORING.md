@@ -1,7 +1,7 @@
 # Documentation authoring rules for this paclet
 
 The pages under `docs/` are the source of truth; `Arrays/Documentation` is generated
-by `build_docs.wls` and gitignored. Author against the
+by `build.wls` and gitignored. Author against the
 `wolfram-symbol-page` / `wolfram-guide-page` / `wolfram-tech-note` skills, plus the
 house rules below, which are maintainer decisions specific to this paclet.
 

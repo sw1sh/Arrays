@@ -1,89 +1,38 @@
 #!/usr/bin/env wolframscript
-(* Submit the Wolfram/Arrays paclet to the Wolfram Paclet Repository.
+(* Submits Wolfram/Arrays to the Wolfram Paclet Repository with PacletPage's SubmitPacletResource:
+   the definition notebook's own check, a fresh PacletBuild into Arrays/build checked to hold every
+   documentation page and to load alone in a fresh kernel, then the submission under the version in
+   Arrays/PacletInfo.wl, which has to be newer than every version the repository has. Build the
+   documentation with build.wls first.
 
-   The submission artifact is Arrays/ResourceDefinition.nb, generated from
-   docs/ResourceDefinition.md by build_docs.wls - edit the markdown and
-   rebuild before submitting, never the notebook.
+       wolframscript -f submit.wls              (or --dry-run: everything but the submission)
 
-   Run with:
+   The paclet is published under PublisherID "Wolfram", so the kernel has to be connected to the
+   Wolfram Cloud as an account that owns that publisher; the repository refuses any other. A dry
+   run in a kernel with no cloud connection runs offline: it builds the archive and loads it,
+   without the notebook check and the scrape, which need a session. That is how the GitHub
+   workflow builds the .paclet it releases. *)
 
-       wolframscript -f submit.wls
-*)
+$ProgressReporting = False
 
-repoDir = DirectoryName[$InputFileName]
+Get[FileNameJoin[{DirectoryName[$InputFileName], "pacletpage.wl"}]]
 
-nbFile = FileNameJoin[{repoDir, "Arrays", "ResourceDefinition.nb"}]
+dryRun = MemberQ[$ScriptCommandLine, "--dry-run"]
 
-If[ ! FileExistsQ[nbFile],
-    Print["FATAL: ", nbFile, " does not exist; run build_docs.wls first."];
+Print[
+    If[dryRun, "dry run", "submission"], ", ",
+    If[TrueQ[$CloudConnected], "connected as " <> ToString[$WolframID], "offline"]
+]
+
+(* the version check, the definition notebook's check and the submission reach the network,
+   which $AllowInternet, a machine-wide setting other kernels switch off, may have closed *)
+result = Block[{$AllowInternet = True}, SubmitPacletResource[$pacletDirectory, "DryRun" -> dryRun]]
+
+If[ ! AssociationQ[result],
+    Print["FATAL: nothing was ", If[dryRun, "built", "submitted"], "."];
     Exit[1]
 ]
 
-Needs["DefinitionNotebookClient`"]
-
-(* The paclet is published under PublisherID "Wolfram", so it has to be
-   submitted from an account that is a member of that publisher; any other
-   login passes every client-side check and is refused by the repository with
-   ResourceObject::apierr. WOLFRAM_CLOUD_USER and WOLFRAM_CLOUD_PASSWORD, where
-   both are set, name the account to submit from; otherwise the stored login is
-   used. The password is read from the environment and never printed. *)
-
-$submitUser = Environment["WOLFRAM_CLOUD_USER"]
-
-(* Every network step below runs inside Block[{$AllowInternet = True}, ...]:
-   the setting is persistent and machine-wide, other kernels on the machine
-   switch it off, and a Block enables the network for this kernel alone without
-   touching the stored value. *)
-
-If[ StringQ[$submitUser] && StringQ[Environment["WOLFRAM_CLOUD_PASSWORD"]],
-    Block[{$AllowInternet = True}, Quiet @ CloudConnect[$submitUser, Environment["WOLFRAM_CLOUD_PASSWORD"]]];
-    If[ $WolframID =!= $submitUser,
-        Print["FATAL: could not connect as ", $submitUser, " from WOLFRAM_CLOUD_USER."];
-        Exit[1]
-    ],
-    If[! TrueQ[$CloudConnected], Block[{$AllowInternet = True}, CloudConnect[]]]
-]
-
-If[ ! TrueQ[$CloudConnected],
-    Print["FATAL: not cloud connected."];
-    Exit[1]
-]
-
-Print["submitting as ", $WolframID]
-
-(* The pre-submission check first: a submission with outstanding errors is
-   rejected by the repository anyway, so failing here is strictly cheaper.
-   Suggestions (such as PacletFilesChanged after a rebuild) do not block. *)
-
-check = UsingFrontEnd @ Block[{nb, r},
-    nb = NotebookOpen[nbFile, Visible -> False];
-    r = Block[{$AllowInternet = True}, DefinitionNotebookClient`CheckDefinitionNotebook[nb]];
-    NotebookClose[nb];
-    r
-]
-
-issues = Normal[check]
-
-Scan[Print["  [", #Level, "] ", #Tag] &, issues]
-
-If[ MemberQ[issues[[All, "Level"]], "Error"],
-    Print["FATAL: the definition notebook has errors; fix them before submitting."];
-    Exit[1]
-]
-
-result = UsingFrontEnd @ Block[{nb, r, DefinitionNotebookClient`ConfirmIssuesDialog = (True &)},
-    nb = NotebookOpen[nbFile, Visible -> False];
-    r = Block[{$AllowInternet = True}, DefinitionNotebookClient`SubmitRepository[nb]];
-    NotebookClose[nb];
-    r
-]
-
-submission = FirstCase[result, _Success, Missing["NotFound"], Infinity]
-
-If[ MatchQ[submission, _Success],
-    Print["submitted:"];
-    KeyValueMap[Print["  ", #1, ": ", #2] &, KeyDrop[Last[submission], "Message"]],
-    Print["SUBMISSION DID NOT SUCCEED:"];
-    Print[result];
-    Exit[1]
-]
+Print[result["Name"], " ", result["Version"], ": ", If[TrueQ[result["Submitted"]], "submitted", "not submitted (dry run)"]]
+Print["archive: ", result["Archive"], ", ", result["Pages"], " documentation pages"]
+If[ KeyExistsQ[result, "Result"], Print["result: ", result["Result"]]]

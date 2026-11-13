@@ -35,6 +35,9 @@ PacletInstall["Wolfram/Arrays"]
 Needs["Wolfram`Arrays`"]
 ```
 
+The documentation is also published as a site, with a feedback form on every page:
+[**WolframArrays**](https://www.wolframcloud.com/obj/nikm/WolframArrays).
+
 ## Layout
 
 ```
@@ -65,8 +68,10 @@ which `pacletpage.wl` fetches from GitHub together with
 wolframscript -f build.wls                # docs/ into Arrays/Documentation and Arrays/ResourceDefinition.nb
 wolframscript -f submit.wls --dry-run     # the archive in Arrays/build, checked to hold every page and to load
 wolframscript -f submit.wls               # the submission to the Paclet Repository
+wolframscript -f release.wls              # the paclet resource and the documentation site, in the connected account
 ```
 
 `PACLETPAGE_REF` and `MTN_REF` pick the refs the two are fetched at, and `PACLETPAGE_PARALLEL` a
 number of parallel kernels for the pages. A submission runs in a kernel connected to the Wolfram
-Cloud as an account that owns the publisher `Wolfram`.
+Cloud as an account that owns the publisher `Wolfram`, and a release in one connected to the
+account the site is published in.

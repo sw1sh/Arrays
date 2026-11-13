@@ -77,13 +77,14 @@ jobs:
 
       - name: License the kernels PacletPage starts
         # wolframscript licenses the kernel it starts by passing it
-        # -entitlement with WOLFRAMSCRIPT_ENTITLEMENTID. PacletPage starts
-        # kernels of its own - the definition scan, the archive build, the
-        # load check - by running Executables/WolframKernel directly, and a
-        # kernel started so gets no license and stops with "No valid password
-        # found". The launcher is wrapped so that a kernel started without an
-        # entitlement is given the job's, and one started with one is left
-        # as it is.
+        # -pwfile !cloudlm.wolfram.com, which sends it to the cloud license
+        # manager, and -entitlement with WOLFRAMSCRIPT_ENTITLEMENTID.
+        # PacletPage starts kernels of its own - the definition scan, the
+        # archive build, the load check - by running Executables/WolframKernel
+        # directly, and a kernel started so gets no license and stops with "No
+        # valid password found". The launcher is wrapped so that a kernel
+        # started without an entitlement is given the job's, and one started
+        # with one is left as it is.
         run: |
           set -eu
           kernels=$(find /usr/local /opt -path '*/Executables/WolframKernel' 2>/dev/null || true)
@@ -97,7 +98,7 @@ jobs:
           for argument in "$@"; do
             if [ "$argument" = "-entitlement" ]; then exec "$0.unlicensed" "$@"; fi
           done
-          exec "$0.unlicensed" -entitlement "$WOLFRAMSCRIPT_ENTITLEMENTID" "$@"
+          exec "$0.unlicensed" -pwfile '!cloudlm.wolfram.com' -entitlement "$WOLFRAMSCRIPT_ENTITLEMENTID" "$@"
           LAUNCHER
           chmod +x "$kernel"
           echo "wrapped $kernel"

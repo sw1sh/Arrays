@@ -18,7 +18,7 @@ $repositoryDirectory = DirectoryName[$InputFileName];
 $pacletDirectory = FileNameJoin[{$repositoryDirectory, "Arrays"}];
 $toolsDirectory = FileNameJoin[{$repositoryDirectory, "build", "tools"}];
 
-$pacletPageRef = Replace[Environment["PACLETPAGE_REF"], Except[_String?(StringLength[#] > 0 &)] -> "v0.3.68"];
+$pacletPageRef = Replace[Environment["PACLETPAGE_REF"], Except[_String?(StringLength[#] > 0 &)] -> "v0.3.69"];
 $markdownToNotebookRef = Replace[Environment["MTN_REF"], Except[_String?(StringLength[#] > 0 &)] -> "main"];
 
 (* a URL's body written to a file, or the script stops; the network is enabled for this kernel

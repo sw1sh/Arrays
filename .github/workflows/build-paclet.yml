@@ -75,6 +75,33 @@ jobs:
             libgl1 libglu1-mesa libxi6 libxrandr2 libxtst6 \
             libxcursor1 libxext6 libxrender1 libxfixes3
 
+      - name: License the kernels PacletPage starts
+        # wolframscript licenses the kernel it starts by passing it
+        # -entitlement with WOLFRAMSCRIPT_ENTITLEMENTID. PacletPage starts
+        # kernels of its own - the definition scan, the archive build, the
+        # load check - by running Executables/WolframKernel directly, and a
+        # kernel started so gets no license and stops with "No valid password
+        # found". The launcher is wrapped so that a kernel started without an
+        # entitlement is given the job's, and one started with one is left
+        # as it is.
+        run: |
+          set -eu
+          kernels=$(find /usr/local /opt -path '*/Executables/WolframKernel' 2>/dev/null || true)
+          if [ "$(printf '%s\n' "$kernels" | grep -c .)" -ne 1 ]; then
+            echo "::error::expected one kernel launcher, found: $kernels"; exit 1
+          fi
+          kernel="$kernels"
+          mv "$kernel" "$kernel.unlicensed"
+          cat > "$kernel" <<'LAUNCHER'
+          #!/bin/sh
+          for argument in "$@"; do
+            if [ "$argument" = "-entitlement" ]; then exec "$0.unlicensed" "$@"; fi
+          done
+          exec "$0.unlicensed" -entitlement "$WOLFRAMSCRIPT_ENTITLEMENTID" "$@"
+          LAUNCHER
+          chmod +x "$kernel"
+          echo "wrapped $kernel"
+
       - name: Build documentation notebooks
         # build.wls fetches PacletPage and MarkdownToNotebook from GitHub
         # itself, so this is the same command a developer runs and there is no

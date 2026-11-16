@@ -2,7 +2,8 @@
 
 Supersedes three separate index-notation implementations by folding them into
 one compiler with one IR and one public surface, hosted in this paclet. The
-phase 1 surface of section 11 is implemented; the phases after it are design.
+phase 1 surface of section 11 and the tiers of phase 2 are implemented; the
+phases after them are design.
 
 ## 1. The three inputs
 
@@ -280,11 +281,17 @@ One algorithm, from Einx.wl / `IndexedMultiply` (§2):
 Steps 1, 2 and 5 are shared by every entrance. Step 3–4 is where the four
 executors differ, and it is the only place they differ.
 
-Contraction does **not** have to go through step 3 as a materialized product:
-for the explicit tier a pairwise `ArrayDot`/`Dot` fold is the fast path and
-step 3 is skipped. Step 3 is the general form that makes hyperedges (an index
-on ≥3 operands, which `TensorNetworks` supports and einx cannot express) and
-elementwise broadcasting fall out of the same code.
+Contraction does **not** go through step 3 as a materialized product, and
+neither does a batch index. Lifting every operand to the global order builds
+their outer product before anything is summed, so the contraction executor
+skips steps 2–3 entirely: the operands are contracted against each other over
+an inactive `TensorProduct`, an axis absent from the output is a slot group,
+and an axis the output keeps from two or more operands - the batch index of a
+batch matrix product, a Hadamard product, a scaling, a kept hyperedge - is a
+delta among the operands, one slot tied to each occurrence and one left free
+to carry the axis to the output (§7.3). Hyperedges (an index on ≥3 operands,
+which `TensorNetworks` supports and einx cannot express) are a slot group of
+three or more, or a delta of four or more slots.
 
 ### 7.2 Size solving
 
@@ -318,9 +325,9 @@ tier-polymorphic Arrays function:
 | --- | --- |
 | `ReshapeStep` (split / merge / unit axes) | `ReshapeArray` |
 | `TransposeStep` | `ArrayTranspose` |
-| `ContractStep` | `ArrayMaterialize[Inactive[TensorContract][Inactive[TensorProduct][…], groups]]` |
-| `MultiplyStep` (align, then combine) | elementwise `Times` on the lifted operands |
-| `BroadcastStep` | tensor product with a ones vector, then permute — `ArrayMaterialize[Inactive[TensorProduct][a, ConstantArray[1, n]]]` |
+| `ContractStep` | `ArrayContract[Inactive[TensorProduct][…, Inactive[SymbolicDeltaProductArray][…]], groups]`, one delta per batch index |
+| `MultiplyStep` (operands that are all scalars) | `Times` |
+| `BroadcastStep` | tensor product with a ones vector over no group — `ArrayContract[Inactive[TensorProduct][a, ConstantArray[1, n]], {}]` |
 | `ReduceStep`, additive | contraction against a ones vector |
 | `ReduceStep`, other reducer | `ArrayMap[f, a, level]` |
 | `TargetBlockStep` | permute targets last, `ArrayMap[f, a, {k}]` |
@@ -334,23 +341,28 @@ are the spellings that survive the symbolic and lazy tiers, because the tensor
 product node and `PadArray` are already defined there. The explicit backend is
 free to use a direct `Table`/`Join` fast path instead; the plan does not change.
 
-The tensor-product node is built and handed to `ArrayMaterialize` rather than
-routed through `ArrayContract`'s list form, which is narrower than it looks:
-its list clause is guarded by `! AllTrue[arrays, ListQ]`, so plain nested-List
-operands fall to the single-array clause, and a `SparseArray` operand meets
-`SimplifyArray`'s singleton rule and comes back as a list of sparse rows. Three
-operand kinds need handling before the node is built: a wrapper container
-(`NumericArray`, `Dataset`, `Tabular`) is materialized first, because
-`TensorProduct` has no evaluation on those heads and `Activate` degrades the
-node into a `Times`; and a rank-0 operand is kept out of the product entirely
-and multiplied back in, both because `TensorProduct[x, 0]` is `0` at any rank
-and because the node does not evaluate with a scalar factor.
+Every contraction is `ArrayContract` over the inactive `TensorProduct` of its
+operands, which is that symbol's spelling for an operand set and which keeps
+each tier: explicit operands are contracted against each other without the
+product being built, a symbolic operand leaves the node inert (written with an
+inactive `TensorContract` where it holds a delta or a group that is not a pair,
+so that substituting the symbols does not set off `TensorContract`'s own rule),
+and a lazy operand is rebuilt through its head. A wrapper container
+(`NumericArray`, `Dataset`, `Tabular`) is materialized at the door, because
+`TensorProduct` has no evaluation on those heads, and a rank-0 operand is a
+factor of the same node, which `ArrayContract` multiplies in after contracting.
 
-`MultiplyStep` is the alignment core's step 3 as a first-class plan step. It is
-not optional: Wolfram arithmetic does not broadcast a size-1 dimension, so
-every descriptor that keeps a shared axis on the output — batch matrix multiply,
-Hadamard, row and column scaling, a kept hyperedge — needs the aligned operands
-multiplied rather than contracted.
+A descriptor that keeps a shared axis on the output — batch matrix multiply,
+Hadamard, row and column scaling, a kept hyperedge — needs that axis carried
+rather than summed, which no slot group spells. It is a delta among the
+operands: `ArrayContract` contracts a delta by identifying the slots it ties,
+so the batch index is multiplied block by block at the cost of the result, and
+an elementwise product or a scaling is a single `Times`. The delta is written
+`Inactive[SymbolicDeltaProductArray]` in the plan because the evaluator unpacks
+a packed array beside an active one. The earlier lowering - broadcast every
+sharing operand into one frame and multiply elementwise - built the operands'
+outer product, 134MB for a batch of four 256x64 by 64x256 products whose result
+is 2MB, and had no form that keeps a symbolic operand inert.
 
 Two gaps in the existing primitives:
 
@@ -387,8 +399,9 @@ MIN opcode) that does not exist here.
 
 ## 8. Tier dispatch — what this paclet adds that none of the three sources has
 
-The operand set is joined with `ArrayUnify`, exactly as `ArrayContract` already
-does for its list form, and the joined tier picks the backend:
+No step picks a backend of its own: each lowers to a primitive that dispatches
+on the tier `ArrayUnify` joins its operands to, so a plan runs on every tier and
+its result has the joined tier:
 
 **Explicit.** Execute the steps eagerly through the Arrays primitives, which
 already preserve `SparseArray` structure, packed arrays and `NumericArray`
@@ -463,7 +476,10 @@ explicit tier. Acceptance: `EinsteinSummation`'s own test suite passes through
 **Phase 2 — the tiers.** Symbolic and lazy backends. Acceptance: every Phase 1
 test rerun with `ArraySymbol` operands returns an inert tree whose
 `ArrayDimensions` matches, and with an `InterpolatingFunction[…][t]` operand
-stays lazy.
+stays lazy. Implemented: the steps lower to tier-preserving primitives and a
+batch index to a delta in the contraction, and `Tests/IndexContract.wlt` runs
+the acceptance over every shape of plan, each inert tree materializing to the
+explicit result once its symbol is substituted.
 
 **Phase 3 — reduce and blocks.** `ArrayIndexReduce`, `ArrayIndexApply`, the
 reducer catalog with the §7.4 lowerings, targeting policy. Acceptance: the

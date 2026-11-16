@@ -31,7 +31,7 @@ RelatedTutorials: [IndexNotation]
 - A bare array is the operand; a one-element list whose element has the rank the input shape names is the wrapped spelling of the same operand.
 - The steps keep the container they are handed. A [SparseArray]() and a packed array come back as themselves, and a [QuantityArray]() comes back a [QuantityArray]() in its own unit, the steps running on its magnitudes. A [NumericArray](), a [TabularColumn](), a [Tabular](), a [Dataset](), an [EventSeries]() and a [ByteArray]() are materialized first and come back as plain arrays, and an [ArrayObject]() is unwrapped at the door and comes back as the bare container it holds; [ArrayIndexContract]() states the rule the unit follows.
 - An axis on the input and absent from the output would be summed rather than moved, so it is declined and [ArrayIndexContract]() is named; the same holds for an axis repeated within one operand and for an anonymous axis.
-- The operand set is joined and the explicit tier is required; [ArrayMaterialize]() brings a lazy or symbolic operand to one.
+- Every step keeps a symbolic operand inert and a lazy one lazy: a symbolic container gives the unevaluated [Transpose](), [ReshapeArray]() and tensor-product forms [ArrayDimensions]() reads, and a lazy container is rebuilt through each step where its head can rebuild. A deferred tree, a structural tree over explicit containers alone, is materialized at the door.
 - `"DefaultOutput"` and `"Targeting"` are read where a descriptor is compiled, as a *bindings* list is, so a prepared [ArrayIndexPattern]() or [ArrayIndexPlan]() carries what its own construction resolved and is declined all three; an option name [ArrayIndexTransform]() does not declare is declined before any setting is read. See [ArrayIndexPlan]().
 
 ## Basic Examples
@@ -204,6 +204,36 @@ ArrayIndexTransform["i -> i j", TabularColumn[{1, 2}], {"j" -> 2}]
 
 <!-- => {{1, 1}, {2, 2}} -->
 
+### Symbolic and lazy operands
+
+A symbolic operand gives the unevaluated rearrangement:
+
+```wl
+ArrayIndexTransform["ij->ji", MatrixSymbol["A", {2, 3}]]
+```
+
+<!-- => Transpose[MatrixSymbol["A", {2, 3}], {2, 1}] -->
+
+---
+
+A repeated axis over a symbolic operand is its inert tensor product with a vector of ones:
+
+```wl
+ArrayIndexTransform["i -> i j", VectorSymbol["v", 3], {"j" -> 2}]
+```
+
+<!-- => Inactive[TensorProduct][VectorSymbol["v", 3], {1, 1}] -->
+
+---
+
+A lazy operand stays lazy, the split made in the body of the [Function]():
+
+```wl
+ArrayIndexTransform["(i j) -> i j", Function[t, {1, t, t^2, t^3}], {"i" -> 2}]
+```
+
+<!-- => Function[t, {{1, t}, {t^2, t^3}}] -->
+
 ### The compile-once path
 
 A prepared [ArrayIndexPlan]() stands in the descriptor position and is executed as it stands:
@@ -303,16 +333,6 @@ ArrayIndexTransform["ij,jk->ik", {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}]
 ```
 
 <!-- => ArrayIndexTransform::arity message, then ArrayIndexTransform["ij,jk->ik", {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}] unevaluated -->
-
----
-
-An operand that joins to the lazy tier is declined, and [ArrayMaterialize]() brings it to the explicit tier; [ArrayIndexContract]() carries the symbolic case:
-
-```wl
-ArrayIndexTransform["ij->ji", Function[t, {{1, 2}, {3, 4}}]]
-```
-
-<!-- => ArrayIndexTransform::tier message naming the Lazy tier, then ArrayIndexTransform["ij->ji", Function[t, {{1, 2}, {3, 4}}]] unevaluated -->
 
 ---
 

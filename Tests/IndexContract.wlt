@@ -311,11 +311,13 @@ VerificationTest[
 EndTestSection[]
 
 
-BeginTestSection["indexcontract - the merge regime"]
+BeginTestSection["indexcontract - batch indices"]
 
-(* Operands sharing an axis the output KEEPS are aligned and multiplied
-   elementwise; no contraction node expresses that, since TensorContract only
-   sums.  These are the IndexedMultiply cases of the corpus. *)
+(* An axis two or more operands share and the output KEEPS is a batch index, a
+   diagonal no contraction group spells, since a group only sums.  It is a delta
+   among the operands of the contraction: one slot tied to each occurrence and
+   one left free to carry the axis to the output.  These are the IndexedMultiply
+   cases of the corpus. *)
 
 VerificationTest[
     ArrayIndexContract[{{i, j}, {j, k}} :> {{i, j, k}}, {{{1, 1}, {3, 2}}, {{1, 0, 1}, {0, 2, 2}}}],
@@ -359,6 +361,48 @@ VerificationTest[
     ArrayIndexContract[{{k}, {i, j}, {j}} :> {{i, j}}, {{1, 1, 1}, $m, {10, 20}}],
     {{30, 120}, {90, 240}},
     TestID -> "indexcontract-66-merge-order-is-independent-of-operand-order"
+]
+
+(* The plan writes the batch index as an INACTIVE delta after the operands: the
+   evaluator unpacks a packed array beside an active one, and ArrayContract
+   takes the inactive delta as the one it activates to.  No broadcast and no
+   elementwise multiply is emitted. *)
+VerificationTest[
+    With[{plan = ArrayIndexPlan["bij,bjk->bik", {{2, 2, 3}, {2, 3, 4}}]},
+        {
+            plan["Expression"],
+            Map[#["Step"] &, plan["Steps"]]
+        }
+    ],
+    {
+        Function[ArrayTranspose[
+            ArrayContract[
+                Inactive[TensorProduct][#1, #2, Inactive[SymbolicDeltaProductArray][{2, 2, 2}, {{1, 2, 3}}]],
+                {{3, 5}, {1, 7}, {4, 8}}
+            ],
+            {2, 3, 1}
+        ]],
+        {"Contract", "Transpose"}
+    },
+    TestID -> "indexcontract-batch-index-is-an-inactive-delta"
+]
+
+(* A batch index costs what the result costs.  The batch product of 4 slices of
+   256 x 64 against 64 x 256 has a result of 262144 reals, 2MB; aligning the
+   operands into one frame and multiplying them elementwise builds their outer
+   product per slice, 16777216 reals, 134MB, before anything is summed. *)
+VerificationTest[
+    BlockRandom[
+        SeedRandom[3];
+        With[{x = RandomReal[1, {4, 256, 64}], y = RandomReal[1, {4, 64, 256}]},
+            {
+                MaxMemoryUsed[ArrayIndexContract["bij,bjk->bik", {x, y}]] < 3*^7,
+                Max[Abs[ArrayIndexContract["bij,bjk->bik", {x, y}] - MapThread[Dot, {x, y}]]] < 10^-10
+            }
+        ]
+    ],
+    {True, True},
+    TestID -> "indexcontract-batch-index-costs-the-result"
 ]
 
 EndTestSection[]
@@ -610,9 +654,8 @@ VerificationTest[
 (* An operand argument that is not a List stands for one operand, where
    EinsteinSummation leaks a file-private symbol into its result. *)
 VerificationTest[
-    Head[ArrayIndexContract[{{i, j}}, $symA]],
-    ArrayIndexContract,
-    {ArrayIndexContract::tier},
+    ArrayIndexContract[{{i, j}}, $symA],
+    $symA,
     TestID -> "indexcontract-71-diverges-non-list-operand-argument"
 ]
 
@@ -741,11 +784,12 @@ VerificationTest[
     TestID -> "indexcontract-packed-operands-stay-packed"
 ]
 
-(* The broadcast step multiplies by an integer ones vector, and the kernel's
-   product of packed Real or Complex data with integer ones comes back
-   unpacked; the step repacks through the plain, value-preserving form of
-   Developer`ToPackedArray, so a descriptor with a broadcast step - the batch
-   product here, the axis repeat below - keeps packed operands packed. *)
+(* A batch product contracts through a delta, written inactive so the evaluator
+   leaves the operands beside it packed, and the broadcast step multiplies by an
+   integer ones vector, whose product with packed Real or Complex data comes back
+   unpacked and is repacked through the plain, value-preserving form of
+   Developer`ToPackedArray; so the batch product here and the axis repeat below
+   both keep packed operands packed. *)
 VerificationTest[
     With[{result = ArrayIndexContract["bij,bjk->bik",
             {Developer`ToPackedArray[N[$batchA]], Developer`ToPackedArray[N[$batchB]]}]},
@@ -922,69 +966,145 @@ EndTestSection[]
 
 BeginTestSection["indexcontract - tiers"]
 
-(* An index contraction and an index rearrangement execute on explicit
-   containers.  The tier gate is a refusal rather than a materialization: a plan
-   is a sequence of steps, and the merge and the broadcast have no form that
-   carries a lazy or a symbolic operand across them, so declining leaves the
-   caller the choice ArrayMaterialize gives them instead of taking it away
-   silently.  The corpus reaches an inert tree for these four calls. *)
+(* Every step a plan lowers to - ReshapeArray, ArrayTranspose and ArrayContract,
+   the broadcast and the batch index included - keeps a symbolic operand inert
+   and a lazy one lazy where its head can rebuild, so an index contraction and
+   an index rearrangement run on every tier, and the result has the tier the
+   operands join to.  A symbolic operand gives an inert tree whose dimensions
+   are the output shape, which ArrayMaterialize computes once the symbols are
+   given values; the corpus reaches an inert tree for these calls too. *)
 
 VerificationTest[
-    Head[ArrayIndexContract["ij,jk->ik", {$symA, $symB}]],
-    ArrayIndexContract,
-    {ArrayIndexContract::tier},
-    TestID -> "indexcontract-06-symbolic-operands-declined"
+    With[{tree = ArrayIndexContract["ij,jk->ik", {$symA, $symB}]},
+        {ArraySymbolicQ[tree], ArrayDimensions[tree], ArrayMaterialize[tree /. {$symA -> $a, $symB -> $b}]}
+    ],
+    {True, {2, 2}, {{4, 5}, {10, 11}}},
+    TestID -> "indexcontract-06-symbolic-operands-give-an-inert-tree"
 ]
 
 VerificationTest[
-    Head[ArrayIndexTransform["ij->ji", $symA]],
-    ArrayIndexTransform,
-    {ArrayIndexTransform::tier},
-    TestID -> "indexcontract-15-symbolic-operand-declined-by-transform"
+    With[{tree = ArrayIndexTransform["ij->ji", $symA]},
+        {tree, ArrayDimensions[tree]}
+    ],
+    {Transpose[$symA, {2, 1}], {3, 2}},
+    TestID -> "indexcontract-15-symbolic-operand-transposes-inertly"
+]
+
+(* A batch index is a delta among the operands of the contraction, written
+   inactive in the plan and kept in the inert tree, where ArrayMaterialize
+   contracts it once the symbols have values. *)
+VerificationTest[
+    With[{tree = ArrayIndexContract["bij,bjk->bik", {ArraySymbol["A", {2, 2, 2}], ArraySymbol["B", {2, 2, 2}]}]},
+        {
+            ArraySymbolicQ[tree],
+            ArrayDimensions[tree],
+            ArrayMaterialize[tree /. {ArraySymbol["A", {2, 2, 2}] -> $batchA, ArraySymbol["B", {2, 2, 2}] -> $batchB}]
+        }
+    ],
+    {True, {2, 2, 2}, {{{1, 2}, {3, 4}}, {{10, 12}, {14, 16}}}},
+    TestID -> "indexcontract-29-symbolic-batch-operands-give-an-inert-tree"
 ]
 
 VerificationTest[
-    Head[ArrayIndexContract["bij,bjk->bik",
-        {ArraySymbol["A", {2, 2, 3}], ArraySymbol["B", {2, 3, 4}]}]],
-    ArrayIndexContract,
-    {ArrayIndexContract::tier},
-    TestID -> "indexcontract-29-symbolic-batch-operands-declined"
+    With[{tree = ArrayIndexContract[{{i, j}, {j, k}} :> {{i, j, k}}, {ArraySymbol["A", {3, 2}], ArraySymbol["B", {2, 4}]}]},
+        {ArraySymbolicQ[tree], ArrayDimensions[tree]}
+    ],
+    {True, {3, 2, 4}},
+    TestID -> "indexcontract-63-symbolic-merge-operands-give-an-inert-tree"
+]
+
+(* A lazy operand: an InterpolatingFunction applied to a free symbol.  A
+   contraction that leaves no array has no lazy form, and gives a scalar
+   expression that substitutes to the contracted value.  A rebuild contracts the
+   value grid and reinterpolates it, so the comparison is at a grid point, where
+   the rebuilt interpolant and the contraction of the original agree exactly;
+   between grid points they agree to interpolation accuracy. *)
+VerificationTest[
+    With[{result = ArrayIndexContract[{{i}, {i}} :> {{}}, {$lazy, {1., 2.}}], t = $if["Grid"][[3, 1]]},
+        Abs[(result /. iTau -> t) - $if[t] . {1., 2.}] < 10^-12
+    ],
+    True,
+    TestID -> "indexcontract-lazy-operand-full-contraction-substitutes"
 ]
 
 VerificationTest[
-    Head[ArrayIndexContract[{{i, j}, {j, k}} :> {{i, j, k}},
-        {ArraySymbol["A", {3, 2}], ArraySymbol["B", {2, 4}]}]],
-    ArrayIndexContract,
-    {ArrayIndexContract::tier},
-    TestID -> "indexcontract-63-symbolic-merge-operands-declined"
+    With[{result = ArrayIndexContract[{{i, j}, {j}} :> {{i}}, {$lazy2, {1., 1.}}]},
+        {ArrayLazyQ[result], ArrayReplaceAll[result, iZ -> -1], ArrayReplaceAll[result, iZ -> 1]}
+    ],
+    {True, {3., 7.}, {11., 15.}},
+    TestID -> "indexcontract-lazy-operand-stays-lazy"
+]
+
+(* The BARE array-valued InterpolatingFunction classifies lazy too, and an
+   outer product keeps it lazy: it is rebuilt through its value grid. *)
+VerificationTest[
+    With[{result = ArrayIndexContract["i,j->ij", {$if, {1., 2.}}], t = $if["Grid"][[3, 1]]},
+        {ArrayLazyQ[result], Max[Abs[result[t] - Outer[Times, $if[t], {1., 2.}]]] < 10^-12}
+    ],
+    {True, True},
+    TestID -> "indexcontract-bare-interpolatingfunction-operand-stays-lazy"
 ]
 
 VerificationTest[
-    Head[ArrayIndexContract[{{i}, {i}} :> {{}}, {$lazy, {1., 2.}}]],
-    ArrayIndexContract,
-    {ArrayIndexContract::tier},
-    TestID -> "indexcontract-lazy-operand-declined"
+    With[{result = ArrayIndexTransform["ij->ji", $lazy2]},
+        {ArrayLazyQ[result], ArrayReplaceAll[result, iZ -> -1], ArrayReplaceAll[result, iZ -> 1]}
+    ],
+    {True, {{1., 3.}, {2., 4.}}, {{5., 7.}, {6., 8.}}},
+    TestID -> "indexcontract-lazy-operand-transposes-lazily"
 ]
 
-(* The BARE array-valued InterpolatingFunction classifies lazy, and the
-   executors are explicit-tier only, so it is refused exactly as the applied
-   form is. *)
+(* The phase acceptance, over every shape of plan: each descriptor is run with
+   its first operand replaced by an ArraySymbol of the same dimensions, which
+   gives an inert tree of the output's dimensions that materializes to the
+   explicit result once the symbol is given the operand, and by a lazy Piecewise
+   of it, which stays lazy - or, where nothing is left of the array, is a scalar
+   expression in the parameter - and substitutes to the result of the operand it
+   stands for. *)
 VerificationTest[
-    Head[ArrayIndexContract[{{i}, {i}} :> {{}}, {$if, {1., 2.}}]],
-    ArrayIndexContract,
-    {ArrayIndexContract::tier},
-    TestID -> "indexcontract-bare-interpolatingfunction-operand-declined"
+    Module[{corpus, value, check},
+        corpus = {
+            {ArrayIndexContract, "ij,jk->ik", {$a, $b}, {}},
+            {ArrayIndexContract, "bij,bjk->bik", {$batchA, $batchB}, {}},
+            {ArrayIndexContract, "b i j, b j k -> b k i", {$batchA, $batchB}, {}},
+            {ArrayIndexContract, "ij,ij->ij", {$m, $m}, {}},
+            {ArrayIndexContract, "bi,b->bi", {$m, {3, 4}}, {}},
+            {ArrayIndexContract, "ii->", {$m}, {}},
+            {ArrayIndexContract, "ij->", {$a}, {}},
+            {ArrayIndexContract, "i,j->ij", {{1, 2}, {3, 4, 5}}, {}},
+            {ArrayIndexContract, "i,i->", {{1, 2}, {3, 4}}, {}},
+            {ArrayIndexContract, "ij,jk,kl->il", {$a, $b, $m}, {}},
+            {ArrayIndexContract, "ib,jb,kb->ijk", {$m, $m, $m}, {}},
+            {ArrayIndexContract, "ib,jb,kb->ijkb", {$m, $m, $m}, {}},
+            {ArrayIndexContract, "iij->j", {$r3}, {}},
+            {ArrayIndexContract, "ij,->ij", {$m, 3}, {}},
+            {ArrayIndexTransform, "(a b) c -> a b c", {$grid}, {"a" -> 2}},
+            {ArrayIndexTransform, "a b c -> (b a) c", {$blocks}, {}},
+            {ArrayIndexTransform, "i j -> j k i", {$m}, {"k" -> 2}}
+        };
+        value[x_] := If[ArrayContainerQ[x], Normal[ArrayMaterialize[x]], Activate[x]];
+        check[{sym_, desc_, ops_, bind_}] := Module[{explicit, symbol, symbolic, lazy},
+            explicit = If[sym === ArrayIndexTransform, sym[desc, First[ops], bind], sym[desc, ops, bind]];
+            symbol = ArraySymbol["Z", Dimensions[First[ops]]];
+            symbolic = If[sym === ArrayIndexTransform, sym[desc, symbol, bind], sym[desc, ReplacePart[ops, 1 -> symbol], bind]];
+            lazy = With[{piece = Piecewise[{{First[ops], zLazy < 0}}, 2 First[ops]]},
+                If[sym === ArrayIndexTransform, sym[desc, piece, bind], sym[desc, ReplacePart[ops, 1 -> piece], bind]]
+            ];
+            And[
+                ArraySymbolicQ[symbolic] || ArrayRank[explicit] === 0,
+                ArrayDimensions[symbolic] === Dimensions[explicit],
+                value[symbolic /. symbol -> First[ops]] == explicit,
+                ArrayLazyQ[lazy] || ArrayRank[explicit] === 0,
+                value[lazy /. zLazy -> 1] == 2 explicit
+            ]
+        ];
+        Select[corpus, ! check[#] &][[All, 2]]
+    ],
+    {},
+    TestID -> "indexcontract-symbolic-and-lazy-operands-agree-with-explicit"
 ]
 
-VerificationTest[
-    Head[ArrayIndexTransform["ij->ji", $lazy2]],
-    ArrayIndexTransform,
-    {ArrayIndexTransform::tier},
-    TestID -> "indexcontract-lazy-operand-declined-by-transform"
-]
-
-(* Solving needs no data, so a symbolic operand plans even where it does not
-   execute: the shape comes out without materializing anything. *)
+(* Solving needs no data, so a symbolic operand plans without materializing
+   anything. *)
 VerificationTest[
     With[{plan = ArrayIndexPlan["ij,jk->ik", {$symA, $symB}]},
         {plan["OutputDimensions"], plan["AxisSizes"]}

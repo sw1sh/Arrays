@@ -125,39 +125,6 @@ indexClassifyAxis[normalized_Association, id_Integer, inputs_List, outputs_List]
     ]
 
 
-(* === the global axis order and the merge set === *)
-
-(* Output axes first, then the contracted ones, then whatever is left.  Putting
-   the output axes first is what makes the final permutation the identity in the
-   common case; the order is otherwise arbitrary, and it is fixed here so that
-   every operand is lifted into the SAME frame. *)
-
-indexGlobalOrder[outFrame_List, effects_List, frames_List] :=
-    DeleteDuplicates @ Join[
-        outFrame,
-        Map[Function[record, record["Axis"]], Cases[effects, KeyValuePattern["Effect" -> "Contracted"]]],
-        Catenate[frames]
-    ]
-
-(* Merging identifies one axis across several operands by multiplying them
-   elementwise in a common frame - the diagonal that TensorContract has no
-   spelling for.  It is needed exactly for an axis the OUTPUT carries and two or
-   more operands supply: a batch index.  An axis the output drops needs no
-   merge, because summing over one slot per operand is what a contraction group
-   already does.
-
-   Merging fewer operands than every one touching an output axis is deliberate:
-   an expand-and-multiply materializes the full outer product of its members, so
-   the members are kept to those that actually share an index. *)
-
-indexMergeSet[outFrame_List, frames_List] :=
-    Module[{flat = Catenate[frames], shared, members},
-        shared = Select[outFrame, Function[id, Count[flat, id] >= 2]];
-        members = Select[Range[Length[frames]], Function[k, IntersectingQ[frames[[k]], shared]]];
-        If[Length[members] >= 2, members, {}]
-    ]
-
-
 (* === targeting === *)
 
 (* A target is recorded per path, and a path may name a composite, so an
@@ -233,7 +200,7 @@ indexTargetedOccurrences[normalized_Association, frames_List, positions_List, ef
 
 indexOperationAnalysis[normalized_Association, targeting_] :=
     Module[{parts, frames, outFrame, positions, units, unitRecords, inputOccurrences, outputOccurrences,
-            effects, order, selfContracted, reduced, merge, mergeFrame},
+            effects},
         If[ ! MatchQ[targeting, True | Automatic | False],
             indexFail[ArrayIndexPlan, "option", {targeting, "Targeting"}, <|"Option" -> "Targeting"|>]
         ];
@@ -262,25 +229,11 @@ indexOperationAnalysis[normalized_Association, targeting_] :=
             ],
             {id, Keys[normalized["Axes"]]}
         ];
-        order = indexGlobalOrder[outFrame, effects, frames];
-        (* The merge is computed against the frames a trace has already left:
-           a self-contracted axis is gone before any operand is lifted, so it
-           can neither join a merge frame nor be broadcast into one. *)
-        selfContracted = Map[Function[record, record["Axis"]], Cases[effects, KeyValuePattern["Effect" -> "SelfContracted"]]];
-        reduced = Map[Function[frame, Select[frame, Function[id, ! MemberQ[selfContracted, id]]]], frames];
-        merge = indexMergeSet[outFrame, reduced];
-        mergeFrame = If[ merge === {},
-            {},
-            With[{content = Catenate[reduced[[merge]]]}, Select[order, Function[id, MemberQ[content, id]]]]
-        ];
         <|
             "Normalized" -> normalized,
             "InputFrames" -> frames,
             "OutputFrame" -> outFrame,
             "Effects" -> effects,
-            "GlobalOrder" -> order,
-            "MergeSet" -> merge,
-            "MergeFrame" -> mergeFrame,
             "Targeting" -> targeting,
             "TargetedOccurrences" -> indexTargetedOccurrences[normalized, frames, positions, effects, targeting]
         |>
@@ -337,25 +290,29 @@ indexEmit[step_String, inputs_List, output_Integer, own_Association, frame_List,
    only open positions are the operand slots, which is the Function that
    "Expression" hands back.
 
-   The seven passes are the alignment core: lift each operand into a common
-   axis order, combine, contract, and lower the result back onto the output
-   shape.  A step is emitted only when it is not the identity, which is why a
-   pure permutation comes out as a single ArrayTranspose and a pure split as a
-   single ReshapeArray.
+   The six passes are the alignment core: split each operand into its axes,
+   trace it, contract the operands against each other, and lower the result back
+   onto the output shape.  A step is emitted only when it is not the identity,
+   which is why a pure permutation comes out as a single ArrayTranspose and a
+   pure split as a single ReshapeArray.
 
-   The expand-and-multiply of pass 3 is applied to the merge members ONLY and
-   never to the contraction operands: lifting every operand to the full global
-   frame, as the einx lowering does, would materialize the entire outer product
-   before summing it, while a contraction group over the inactive tensor product
-   never builds one. *)
+   No operand is ever lifted into a common frame.  An axis two operands share
+   and the output keeps - a batch index - is a diagonal, which a contraction
+   group alone cannot spell, and it is spelled with a DELTA in the contraction:
+   one slot tied to each slot that carries the axis, and one slot left free to
+   carry it to the output.  ArrayContract contracts a delta by identifying the
+   slots it ties, so the batch index costs what the result costs, where lifting
+   the operands into a common frame and multiplying them elementwise builds
+   their outer product first; and the same node is what stays inert over a
+   symbolic operand and what a lazy operand's rebuild contracts. *)
 
 indexExecutionPlan[analysis_Association, solved_Association] :=
     Module[{
             sizes = solved["AxisSizes"], inputShapes = solved["InputShapes"], effects = analysis["Effects"],
             outFrame = analysis["OutputFrame"], outDims = First[solved["OutputShapes"]],
-            merge = analysis["MergeSet"], mergeFrame = analysis["MergeFrame"],
-            frames, dims, regs, steps = {}, next, n, traces, live, scalars, tensors, combine,
-            slotFrame, slotDims, groups, dropped, result, resultFrame, resultDims, spread, factors
+            frames, dims, regs, steps = {}, next, n, traces, scalars, tensors,
+            slotFrame, slotDims, batch, deltas = {}, deltaGroups = {}, fullFrame, fullDims,
+            groups, dropped, result, resultFrame, resultDims, spread, factors
         },
         frames = analysis["InputFrames"];
         n = Length[frames];
@@ -377,7 +334,7 @@ indexExecutionPlan[analysis_Association, solved_Association] :=
 
         (* 2.  Self-contraction.  A trace is taken before anything else touches
                the operand, so every frame is duplicate-free from here on and
-               the merge and the contraction never see a repeated slot. *)
+               the contraction never sees a repeated slot of one operand. *)
         traces = GroupBy[
             Cases[effects, KeyValuePattern["Effect" -> "SelfContracted"]],
             Function[effect, effect["Inputs"][[1, 1]]],
@@ -396,72 +353,59 @@ indexExecutionPlan[analysis_Association, solved_Association] :=
             {k, n}
         ];
 
-        (* 3.  Merge.  Each member is broadcast to the axes it lacks, permuted
-               into the merge frame and multiplied elementwise; the product
-               takes the position of the first member and the others leave the
-               operand list.  A contracted axis shared by exactly these operands
-               now occupies a single slot, which the next pass sums. *)
-        If[ merge =!= {},
-            Do[
-                spread = Select[mergeFrame, Function[id, ! MemberQ[frames[[k]], id]]];
-                If[ spread =!= {},
-                    factors = Lookup[sizes, spread];
-                    frames[[k]] = Join[frames[[k]], spread];
-                    dims[[k]] = Join[dims[[k]], factors];
-                    AppendTo[steps, indexEmit["Broadcast", {regs[[k]]}, next, <|"Sizes" -> factors, "Axes" -> spread|>, frames[[k]], dims[[k]]]];
-                    regs[[k]] = next++
-                ];
-                If[ frames[[k]] =!= mergeFrame,
-                    AppendTo[steps, indexEmit["Transpose", {regs[[k]]}, next, <|"Permutation" -> indexGatherPermutation[frames[[k]], mergeFrame]|>, mergeFrame, Lookup[sizes, mergeFrame]]];
-                    regs[[k]] = next++;
-                    frames[[k]] = mergeFrame;
-                    dims[[k]] = Lookup[sizes, mergeFrame]
-                ],
-                {k, merge}
-            ];
-            AppendTo[steps, indexEmit["Multiply", regs[[merge]], next, <||>, mergeFrame, Lookup[sizes, mergeFrame]]];
-            regs[[First[merge]]] = next++;
-            live = Delete[Range[n], List /@ Rest[merge]],
-            live = Range[n]
-        ];
-
-        (* 4.  Contract.  The surviving tensors are numbered by concatenating
-               their frames, and every axis the output does not carry becomes
-               one ascending group of the slots that carry it: one slot is a
-               sum, two an ordinary contraction, three or more the hyperedge a
-               pairwise contractor cannot express.  A rank-0 operand is kept out
-               of the product - a scalar contributes no slot to it - and
-               multiplied back in afterwards. *)
-        scalars = Select[live, Function[k, frames[[k]] === {}]];
-        tensors = Select[live, Function[k, frames[[k]] =!= {}]];
+        (* 3.  Contract.  The tensors are numbered by concatenating their
+               frames, and every axis the output does not carry becomes one
+               ascending group of the slots that carry it: one slot is a sum,
+               two an ordinary contraction, three or more the hyperedge a
+               pairwise contractor cannot express.  An axis the output carries
+               and two or more slots supply is a batch index, and gets a delta
+               of one slot more than it has occurrences: each occurrence is
+               grouped with a slot of the delta, and the last slot is free and
+               carries the axis on.  The deltas are numbered after the tensors.
+               A rank-0 operand joins the node too, contributing no slot, so a
+               scale and a contraction are one step; a set of scalars alone has
+               nothing to contract and is multiplied. *)
+        scalars = Select[Range[n], Function[k, frames[[k]] === {}]];
+        tensors = Select[Range[n], Function[k, frames[[k]] =!= {}]];
         slotFrame = Catenate[frames[[tensors]]];
         slotDims = Catenate[dims[[tensors]]];
-        groups = Map[
-            Function[id, Flatten[Position[slotFrame, id]]],
-            DeleteDuplicates[Select[slotFrame, Function[id, ! MemberQ[outFrame, id]]]]
+        batch = Select[outFrame, Function[id, Count[slotFrame, id] >= 2]];
+        fullFrame = slotFrame;
+        fullDims = slotDims;
+        Do[
+            With[{occurrences = Flatten[Position[slotFrame, id]], base = Length[fullFrame]},
+                AppendTo[deltas, ConstantArray[sizes[id], Length[occurrences] + 1]];
+                deltaGroups = Join[deltaGroups, Table[{occurrences[[i]], base + i}, {i, Length[occurrences]}]];
+                fullFrame = Join[fullFrame, ConstantArray[id, Length[occurrences] + 1]];
+                fullDims = Join[fullDims, ConstantArray[sizes[id], Length[occurrences] + 1]]
+            ],
+            {id, batch}
+        ];
+        groups = Join[
+            Map[
+                Function[id, Flatten[Position[slotFrame, id]]],
+                DeleteDuplicates[Select[slotFrame, Function[id, ! MemberQ[outFrame, id]]]]
+            ],
+            deltaGroups
         ];
         dropped = List /@ Sort[Catenate[groups]];
-        resultFrame = Delete[slotFrame, dropped];
-        resultDims = Delete[slotDims, dropped];
+        resultFrame = Delete[fullFrame, dropped];
+        resultDims = Delete[fullDims, dropped];
         Which[
+            tensors === {} && Length[scalars] === 1,
+                result = regs[[First[scalars]]],
             tensors === {},
-                result = None,
-            Length[tensors] === 1 && groups === {},
+                AppendTo[steps, indexEmit["Multiply", regs[[scalars]], next, <||>, resultFrame, resultDims]];
+                result = next++,
+            Length[tensors] === 1 && groups === {} && scalars === {},
                 result = regs[[First[tensors]]],
             True,
-                AppendTo[steps, indexEmit["Contract", regs[[tensors]], next, <|"Groups" -> groups|>, resultFrame, resultDims]];
+                AppendTo[steps, indexEmit["Contract", regs[[Join[tensors, scalars]]], next,
+                    If[deltas === {}, <|"Groups" -> groups|>, <|"Groups" -> groups, "Deltas" -> deltas|>], resultFrame, resultDims]];
                 result = next++
         ];
-        If[ scalars =!= {},
-            combine = If[result === None, regs[[scalars]], Prepend[regs[[scalars]], result]];
-            If[ Length[combine] > 1,
-                AppendTo[steps, indexEmit["Multiply", combine, next, <||>, resultFrame, resultDims]];
-                result = next++,
-                result = First[combine]
-            ]
-        ];
 
-        (* 5.  Repeat the axes the output carries and no operand supplies.  This
+        (* 4.  Repeat the axes the output carries and no operand supplies.  This
                is genuine work: Wolfram arithmetic does not broadcast a size-1
                dimension, so the step cannot be elided. *)
         spread = Select[outFrame, Function[id, ! MemberQ[resultFrame, id]]];
@@ -473,7 +417,7 @@ indexExecutionPlan[analysis_Association, solved_Association] :=
             result = next++
         ];
 
-        (* 6.  Permute into the output order. *)
+        (* 5.  Permute into the output order. *)
         If[ resultFrame =!= outFrame,
             AppendTo[steps, indexEmit["Transpose", {result}, next, <|"Permutation" -> indexGatherPermutation[resultFrame, outFrame]|>, outFrame, Lookup[sizes, outFrame]]];
             result = next++;
@@ -481,7 +425,7 @@ indexExecutionPlan[analysis_Association, solved_Association] :=
             resultDims = Lookup[sizes, outFrame]
         ];
 
-        (* 7.  Merge the output composites and insert the output unit axes.  The
+        (* 6.  Merge the output composites and insert the output unit axes.  The
                dimensions come from the solver, which multiplied each composite
                out while it was checking the operands. *)
         If[ resultDims =!= outDims,
@@ -521,6 +465,13 @@ indexGroupsQ[groups_List] :=
 
 indexGroupsQ[_] := False
 
+(* A batch delta ties every slot it has, all of one extent: one slot for each
+   occurrence of the batch axis, two or more, and the free one. *)
+indexDeltasQ[deltas_List] :=
+    AllTrue[deltas, Function[delta, MatchQ[delta, {_Integer, _, __}] && indexDimensionsQ[delta] && SameQ @@ delta]]
+
+indexDeltasQ[_] := False
+
 indexStepQ[step_Association] :=
     And[
         MemberQ[{"Reshape", "Transpose", "Broadcast", "Multiply", "Contract"}, Lookup[step, "Step"]],
@@ -530,7 +481,7 @@ indexStepQ[step_Association] :=
         indexDimensionsQ[Lookup[step, "Dimensions"]],
         Switch[step["Step"],
             "Transpose", indexPermutationQ[Lookup[step, "Permutation"]],
-            "Contract", indexGroupsQ[Lookup[step, "Groups"]],
+            "Contract", indexGroupsQ[Lookup[step, "Groups"]] && indexDeltasQ[Lookup[step, "Deltas", {}]],
             "Broadcast", indexDimensionsQ[Lookup[step, "Sizes"]] && MatchQ[Lookup[step, "Axes"], {__Integer}],
             _, True
         ]

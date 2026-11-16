@@ -41,7 +41,11 @@ indexOnesExpression[n_Integer] := Hold[ConstantArray[1, n]]
 (* === one step, one primitive ===
 
    Every step lowers to a primitive this paclet already has and already
-   dispatches on the tier of its operands; there is no array algorithm here.
+   dispatches on the tier of its operands; there is no array algorithm here, and
+   no tier is decided here either.  ReshapeArray, ArrayTranspose and
+   ArrayContract each keep a symbolic operand inert and a lazy one lazy where its
+   head can rebuild, so a plan whose steps are only those runs on every tier the
+   same way, and its result is whatever tier its operands join to.
 
    A contraction is ArrayContract over an inactive TensorProduct, which is that
    symbol's spelling for an operand SET, and the step therefore names the
@@ -59,7 +63,16 @@ indexOnesExpression[n_Integer] := Hold[ConstantArray[1, n]]
    pairwise decomposition and the plan carries groups rather than pairs.  An
    empty group list needs no spelling of its own: the operands share no
    contracted axis, and a contraction with nothing to sum is their outer
-   product, which is the array the step stands for. *)
+   product, which is the array the step stands for.
+
+   A batch index is a delta among the operands, after them in the node, and it
+   is written INACTIVE: the evaluator unpacks every packed array beside an
+   active SymbolicDeltaProductArray, at about the cost of reading the array, and
+   ArrayContract takes the inactive delta as the one it activates to. *)
+
+indexDeltaExpression[dims_List] := With[{d = dims, groups = {Range[Length[dims]]}},
+    Hold[Inactive[SymbolicDeltaProductArray][d, groups]]
+]
 
 indexStepExpression[step : KeyValuePattern["Step" -> "Reshape"], {in_Hold}] :=
     indexHoldApply[ReshapeArray, {in, indexHeldValue[step["Dimensions"]]}]
@@ -67,26 +80,24 @@ indexStepExpression[step : KeyValuePattern["Step" -> "Reshape"], {in_Hold}] :=
 indexStepExpression[step : KeyValuePattern["Step" -> "Transpose"], {in_Hold}] :=
     indexHoldApply[ArrayTranspose, {in, indexHeldValue[step["Permutation"]]}]
 
-(* Broadcasting is a tensor product against a vector of ones, and it is genuine
-   work rather than bookkeeping that could be elided: Wolfram arithmetic does
-   not broadcast a length-1 dimension, so an operand missing an axis of the
-   frame it is about to be multiplied into is expanded to the full extent.  The
-   ones vector is left unevaluated inside the held expression, so the rendered
-   plan names the extent it broadcasts to.
+(* Broadcasting repeats an axis the output carries and no operand supplies, and
+   it is genuine work rather than bookkeeping that could be elided: Wolfram
+   arithmetic does not broadcast a length-1 dimension.  It is the tensor product
+   of the register with vectors of ones, which is ArrayContract of their node
+   with no group to sum - the same primitive as every contraction, so a symbolic
+   register gives the inert product and a lazy one is rebuilt through its head.
+   The ones vectors are left unevaluated inside the held expression, so the
+   rendered plan names the extent it broadcasts to.
 
    The ones are integers, and the kernel's product of a packed Real or Complex
    operand with an integer vector comes back unpacked, so the product is passed
    through the plain form of Developer`ToPackedArray - the one form that never
-   coerces a value, and that returns a SparseArray, an exact result and every
-   other unpackable container exactly as the product made it.
+   coerces a value, and that returns a SparseArray, an exact result, an inert
+   node and a lazy container exactly as the product made it.
 
    A RANK-0 register takes ConstantArray instead, and the step's own shape says
    when: the frame it writes is the frame it read plus the axes it spreads, so a
-   frame as long as the size list is a frame that was empty.  The two spellings
-   agree - a tensor product of a scalar with vectors of ones is that constant
-   array - but the node form has no array leaf to classify, so it is neither a
-   deferred tree nor an explicit container and ArrayMaterialize has nothing to
-   materialize it as. *)
+   frame as long as the size list is a frame that was empty. *)
 indexStepExpression[step : KeyValuePattern["Step" -> "Broadcast"], {in_Hold}] :=
     If[ Length[step["Frame"]] === Length[step["Sizes"]],
         indexHoldApply[ConstantArray, {in, indexHeldValue[step["Sizes"]]}],
@@ -94,25 +105,28 @@ indexStepExpression[step : KeyValuePattern["Step" -> "Broadcast"], {in_Hold}] :=
             Developer`ToPackedArray,
             {
                 indexHoldApply[
-                    ArrayMaterialize,
-                    {indexHoldApply[Inactive[TensorProduct], Join[{in}, Map[indexOnesExpression, step["Sizes"]]]]}
+                    ArrayContract,
+                    {
+                        indexHoldApply[Inactive[TensorProduct], Join[{in}, Map[indexOnesExpression, step["Sizes"]]]],
+                        indexHeldValue[{}]
+                    }
                 ]
             }
         ]
     ]
 
-(* The operands a merge multiplies have already been broadcast and transposed
-   into one common frame, so the merge itself is ordinary elementwise
-   arithmetic, which threads through SparseArray and packed operands natively.
-   It is also the step no contraction node can express: a shared axis the output
-   KEEPS is a diagonal, and TensorContract only sums. *)
+(* A multiply takes the operands of a descriptor that are all scalars, which
+   have nothing to contract and no frame to align. *)
 indexStepExpression[KeyValuePattern["Step" -> "Multiply"], ins : {__Hold}] :=
     indexHoldApply[Times, ins]
 
 indexStepExpression[step : KeyValuePattern["Step" -> "Contract"], ins : {__Hold}] :=
     indexHoldApply[
         ArrayContract,
-        {indexHoldApply[Inactive[TensorProduct], ins], indexHeldValue[step["Groups"]]}
+        {
+            indexHoldApply[Inactive[TensorProduct], Join[ins, Map[indexDeltaExpression, Lookup[step, "Deltas", {}]]]],
+            indexHeldValue[step["Groups"]]
+        }
     ]
 
 
@@ -157,21 +171,20 @@ indexPlanExpression[plan_Association] := Module[{registers = <||>},
    paclet's own name for a wrapper with no native structural support, and it
    holds for every admitted wrapper except QuantityArray, whose unit the
    executor lifts below and whose container is therefore rebuildable at any
-   rank. *)
+   rank.
+
+   A lazy or a symbolic operand is passed on as it is, since the steps keep it
+   lazy or inert.  A DEFERRED TREE - a structural tree whose leaves are all
+   explicit, which a tensor-network contraction hands back unactivated - is
+   materialized: it has a value and merely defers computing it, and its tier
+   reads Lazy with no head to rebuild through, so a step would otherwise expand
+   it per scalar. *)
 
 indexNativeOperand[a_ ? opaqueWrapperQ] := ArrayMaterialize[a]
 
+indexNativeOperand[a_ ? deferredTreeQ] := ArrayMaterialize[a]
+
 indexNativeOperand[a_] := If[! ArrayExplicitQ[a] || ArrayQ[a], a, ArrayMaterialize[a]]
-
-(* A non-container operand is exempt from the join because it has no tier to
-   contribute: a bare number is the rank-0 operand of a {} shape, and joining it
-   in would report Missing["NotAContainer"] for an operand set that is otherwise
-   explicit.  An operand set of nothing but scalars imposes no tier at all and
-   is arithmetic, so it answers with the tier that admits it. *)
-
-indexOperandTier[arrays_List] := With[{containers = Select[arrays, ArrayContainerQ]},
-    If[containers === {}, "Explicit", arrayTierJoin[containers]]
-]
 
 (* === units are carried, not computed ===
 
@@ -204,9 +217,12 @@ indexOperandTier[arrays_List] := With[{containers = Select[arrays, ArrayContaine
    ordinary Quantity, there being no rank-0 QuantityArray.
 
    A QuantityArray may also carry a unit PER COLUMN, and then there is no single
-   unit to lift: one such operand disables the lift for the whole set, the
-   operands go to the steps as they stand, and the elements carry their own
-   units. *)
+   unit to lift: one such operand disables the lift for the whole set, every
+   QuantityArray goes to the steps as the array of its elements, and the
+   elements carry their own units.  The elements and not the wrapper, because a
+   contraction sums: a product of different units summed with a zero of another
+   is no quantity, and the array of elements is what the contraction can take
+   without adding across units it never pairs. *)
 
 indexOperandUnit[a_QuantityArray] := a["UnitBlock"]
 
@@ -214,7 +230,7 @@ indexOperandUnit[_] := None
 
 indexUnitsOff[operands_List] := With[{units = Map[indexOperandUnit, operands]},
     If[ MemberQ[units, _List],
-        {operands, {}},
+        {Replace[operands, q_QuantityArray :> Normal[q], {1}], {}},
         {MapThread[If[#2 === None, #1, QuantityMagnitude[#1]] &, {operands, units}], DeleteCases[units, None]}
     ]
 ]
@@ -229,18 +245,9 @@ indexUnitsOn[result_, units_List] := With[{scale = Times @@ Map[Quantity[1, #] &
 ]
 
 
-(* The tier gate is a REFUSAL and not a materialization.  Each step in isolation
-   would dispatch on its own operands - ArrayContract, ArrayTranspose and
-   ReshapeArray all do - but a plan is a sequence, and the merge and broadcast
-   steps have no form that keeps a lazy or symbolic operand lazy or symbolic
-   across it.  Declining with a message leaves the caller the choice
-   ArrayMaterialize gives them; materializing here would take it away, and
-   silently.
-
-   The arity refusal names ArrayIndexPlan rather than the executing symbol,
-   because the mismatch is between the operands and the descriptor's input
-   shapes and that is where the fix belongs; the tier refusal names the
-   executing symbol, which is the one that promised the explicit tier.
+(* The arity and dimension refusals name ArrayIndexPlan rather than the
+   executing symbol, because the mismatch is between the operands and the
+   descriptor's input shapes and that is where the fix belongs.
 
    The dimensions are checked as well as the count, and that check is what makes
    a PREPARED plan safe to hand around.  A plan's steps carry the extents they
@@ -251,7 +258,7 @@ indexUnitsOn[result_, units_List] := With[{scale = Times @@ Map[Quantity[1, #] &
    one built by ArrayIndexPlan and reused is exactly where the check earns
    itself. *)
 
-indexExecutePlan[plan_Association, arrays_List, sym_Symbol] := Module[{operands, tier, units},
+indexExecutePlan[plan_Association, arrays_List] := Module[{operands, units},
     If[ Length[arrays] =!= Length[plan["InputDimensions"]],
         indexFail[
             ArrayIndexPlan,
@@ -274,12 +281,6 @@ indexExecutePlan[plan_Association, arrays_List, sym_Symbol] := Module[{operands,
         ],
         {k, Length[operands]}
     ];
-    tier = indexOperandTier[operands];
-    If[tier =!= "Explicit", indexFail[sym, "tier", {tier}, <|"Tier" -> tier|>]];
-    (* The tier is read off the operands as they were handed in, so the unit
-       lift comes after the gate: it rewrites a QuantityArray into the array of
-       its magnitudes, which is an explicit container whichever way the gate
-       would have answered. *)
     {operands, units} = indexUnitsOff[operands];
     (* The operands are handed to the plan's own Function, which is the value
        the "Expression" property renders and this is the application it names.  A

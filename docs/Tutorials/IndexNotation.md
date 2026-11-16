@@ -10,11 +10,12 @@ RelatedGuides: [Arrays]
 RelatedTutorials: [ArrayContainers]
 ---
 
-An index descriptor names the axes of each operand and the axes of the result, and everything an index operation does follows from where each name occurs. [ArrayIndexPattern]() compiles a descriptor written in the classic einsum dialect, in the identifier dialect or as a Wolfram list of shapes; [ArrayIndexPlan]() solves the size of every axis against operand shapes and emits the steps that produce the result; [ArrayIndexContract]() and [ArrayIndexTransform]() run them. Solving sizes needs shapes and nothing else, so a plan is available wherever a shape is: from bare dimension lists with no data at all, from an [ArraySymbol]() that has no elements, and from a container that has not computed its own yet. Running the steps needs elements, so the executors take the explicit tier and decline the rest. This note works one matrix product through the three dialects, reads what a plan knows before any data, executes contractions, traces and hyperedges over explicit containers, and then follows the contraction that has no elements to run on: the inert tensor-contraction tree, which is itself an array container this paclet shapes, joins and materializes on demand.
+An index descriptor names the axes of each operand and the axes of the result, and everything an index operation does follows from where each name occurs. [ArrayIndexPattern]() compiles a descriptor written in the classic einsum dialect, in the identifier dialect or as a Wolfram list of shapes; [ArrayIndexPlan]() solves the size of every axis against operand shapes and emits the steps that produce the result; [ArrayIndexContract]() and [ArrayIndexTransform]() run them. Solving sizes needs shapes and nothing else, so a plan is available wherever a shape is: from bare dimension lists with no data at all, from an [ArraySymbol]() that has no elements, and from a container that has not computed its own yet. Running the steps keeps each tier: over a symbolic operand they give an inert tensor-contraction tree, over a lazy one a lazy container, and over explicit containers the computed array. This note works one matrix product through the three dialects, reads what a plan knows before any data, executes contractions, traces and hyperedges over explicit containers, and then follows the contraction that has no elements to run on: the inert tensor-contraction tree, which is itself an array container this paclet shapes, joins and materializes on demand.
 
-<!-- #| annotation: 04.09.26: Design review - the note is organized around the one asymmetry the four symbols
-share: a plan is solved from shapes and an execution needs elements, so ArrayIndexPlan answers on every tier
-and the two executors answer on one. The deferred tensor-contraction tree is built literally in every cell
+<!-- #| annotation: 04.09.26: Design review - the note is organized around what the four symbols share: a
+plan is solved from shapes, so ArrayIndexPlan answers on every tier, and every step lowers to a primitive that
+keeps its operand's tier, so the two executors answer on every tier as well, giving an inert tree over a
+symbol, a lazy container over a lazy operand and an array over explicit ones. The deferred tensor-contraction tree is built literally in every cell
 rather than obtained from a tensor-network call, because the docs build evaluates every cell and the note
 must load no paclet but this one; EinsteinSummation and ActivateTensors are named in prose with the call that
 produces such a tree, and that claim is attached to the contraction descriptor quoted rather than to
@@ -317,7 +318,7 @@ ArrayIndexContract["ij,jk", {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}]
 
 ## Containers Through the Steps
 
-Container preservation is a property of the steps rather than of one descriptor: the executors run on the explicit tier, hand the operands to the primitives the steps lower to, and give back the container those primitives build. A [SparseArray]() and a packed array reach the steps intact, and an operand set of [SparseArray]() with background zero comes back a [SparseArray]() whatever steps the descriptor emits, a rank-0 result being an ordinary number with no [SparseArray]() to build. Where an operand is dense or its background is not zero, the steps decide: a scaling keeps the [SparseArray](), and a contraction summing an axis between such operands comes back a plain array carrying the same values. For a [QuantityArray]() the unit is lifted off, the steps run on the magnitudes, and the product of the units goes back on. A [NumericArray](), a [TabularColumn](), a [Tabular](), a [Dataset](), an [EventSeries]() and a [ByteArray]() are materialized at the door, [TensorProduct]() having no evaluation on those heads, and the result is a plain array. [ArrayIndexTransform]() runs the rearranging half of the same machinery through the same door.
+Container preservation is a property of the steps rather than of one descriptor: the executors hand the operands to the primitives the steps lower to, and give back the container those primitives build. A [SparseArray]() and a packed array reach the steps intact, and an operand set of [SparseArray]() with background zero comes back a [SparseArray]() whatever steps the descriptor emits, a rank-0 result being an ordinary number with no [SparseArray]() to build. Where an operand is dense or its background is not zero, the steps decide: a scaling keeps the [SparseArray](), and a contraction summing an axis between such operands comes back a plain array carrying the same values. For a [QuantityArray]() the unit is lifted off, the steps run on the magnitudes, and the product of the units goes back on. A [NumericArray](), a [TabularColumn](), a [Tabular](), a [Dataset](), an [EventSeries]() and a [ByteArray]() are materialized at the door, [TensorProduct]() having no evaluation on those heads, and the result is a plain array. [ArrayIndexTransform]() runs the rearranging half of the same machinery through the same door.
 
 A contraction over [SparseArray]() operands comes back a [SparseArray]():
 
@@ -443,6 +444,14 @@ contracted = ArrayContract[Inactive[TensorProduct][ArraySymbol["A", {2, 3}], Arr
 
 <!-- => TensorContract[Inactive[TensorProduct][ArraySymbol["A", {2, 3}], ArraySymbol["B", {3, 4}]], {{2, 3}}] -->
 
+[ArrayIndexContract]() gives the same tree for the descriptor of that contraction, its plan lowering to this very call:
+
+```wl
+ArrayIndexContract["ij,jk->ik", {ArraySymbol["A", {2, 3}], ArraySymbol["B", {3, 4}]}]
+```
+
+<!-- => TensorContract[Inactive[TensorProduct][ArraySymbol["A", {2, 3}], ArraySymbol["B", {3, 4}]], {{2, 3}}] -->
+
 It carries no elements, so it is a symbolic container:
 
 ```wl
@@ -528,9 +537,9 @@ ArrayTier[Inactive[TensorContract][Inactive[TensorProduct][ArraySymbol["A", {2, 
 
 <!-- => "Symbolic" -->
 
-## Planning on Every Tier, Executing on One
+## Planning and Executing on Every Tier
 
-Solving reads dimensions, and [ArrayDimensions]() answers on every tier, so the plan is the same object whatever tier is holding the elements. Execution reads elements instead. [ArrayUnify]() joins an operand set to one tier, and that tier is what the executors read: a contraction and a rearrangement execute on explicit containers, and an operand set joining to any other tier is declined with a message naming the joined tier and pointing at [ArrayMaterialize](). The association [ArrayUnify]() returns also carries the operands as the joined tier holds them.
+Solving reads dimensions, and [ArrayDimensions]() answers on every tier, so the plan is the same object whatever tier is holding the elements. Execution keeps the tier as well: every step lowers to a primitive that keeps a symbolic operand inert and a lazy one lazy, so the result has the tier [ArrayUnify]() joins the operands to. A deferred tree has a value and merely defers computing it, and is materialized as it is handed in. The association [ArrayUnify]() returns also carries the operands as the joined tier holds them.
 
 Two [ArraySymbol]() operands, which have no elements, plan to the same single contraction as the dimension lists above:
 
@@ -590,21 +599,34 @@ ArrayUnify[{{{1, 2}, {3, 4}}, tree}]
 
 <!-- => <|"Tier" -> "Lazy", "Domain" -> Integers, "ElementType" -> Missing["NotApplicable"], "Arrays" -> {Function[\[FormalT], {{1, 2}, {3, 4}}], Inactive[TensorContract][Inactive[TensorProduct][{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}], {{2, 3}}]}|> -->
 
-That is the tier the executors read, and a contraction runs on explicit containers, so the operand set is declined:
+The contraction materializes the tree as it is handed in and runs:
 
 ```wl
 ArrayIndexContract["ij,jk->ik", {tree, {{1, 0}, {0, 1}}}]
 ```
 
-<!-- => ArrayIndexContract::tier message naming the Lazy tier, then ArrayIndexContract["ij,jk->ik", {Inactive[TensorContract][Inactive[TensorProduct][{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}], {{2, 3}}], {{1, 0}, {0, 1}}}] unevaluated -->
+<!-- => {{19, 22}, {43, 50}} -->
 
-[ArrayMaterialize]() brings the tree to the explicit tier, and the contraction runs:
+---
+
+A symbolic operand beside an explicit one gives the inert tree, which [ArrayMaterialize]() computes once the symbol has a value:
 
 ```wl
-ArrayIndexContract["ij,jk->ik", {ArrayMaterialize[tree], {{1, 0}, {0, 1}}}]
+inert = ArrayIndexContract["ij,jk->ik", {MatrixSymbol["A", {2, 2}], {{5, 6}, {7, 8}}}];
+ArrayMaterialize[inert /. MatrixSymbol["A", {2, 2}] -> {{1, 2}, {3, 4}}]
 ```
 
 <!-- => {{19, 22}, {43, 50}} -->
+
+---
+
+A lazy operand stays lazy, the contraction made against the body of its [Function]():
+
+```wl
+ArrayIndexContract["ij,j->i", {Function[t, {{Cos[t], -Sin[t]}, {Sin[t], Cos[t]}}], {1, 0}}]
+```
+
+<!-- => Function[t, {Cos[t], Sin[t]}] -->
 
 ## Compile Once, Apply Many
 
@@ -687,13 +709,13 @@ ArrayIndexPlan[ArrayIndexPattern["ij,jk->ik"], {ArraySymbol["A", {2, 3}], ArrayS
 
 ## Possible Issues
 
-[ArrayIndexTransform]() takes the explicit tier as well, so a deferred tree is declined:
+A contraction that leaves no array has no lazy form, so over a lazy operand it gives a scalar expression in the operand's parameter rather than a lazy container:
 
 ```wl
-ArrayIndexTransform["ij->ji", Inactive[TensorContract][Inactive[TensorProduct][{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}], {{2, 3}}]]
+ArrayIndexContract["i,i->", {Piecewise[{{{1, 2}, z < 0}}, {3, 4}], {1, 1}}]
 ```
 
-<!-- => ArrayIndexTransform::tier message naming the Lazy tier, then ArrayIndexTransform["ij->ji", Inactive[TensorContract][Inactive[TensorProduct][{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}], {{2, 3}}]] unevaluated -->
+<!-- => Piecewise[{{1, z < 0}}, 3] + Piecewise[{{2, z < 0}}, 4] -->
 
 ---
 
@@ -788,4 +810,4 @@ ArrayIndexContract[plan, {{{1, 2, 3}, {4, 5, 6}}, {{1, 2}, {3, 4}, {5, 6}}}]
 
 <!-- => ArrayIndexPlan::dimensions message, then the call unevaluated, with plan shown as its summary box -->
 
-A plan is solved from shapes and the executors run on elements, so the descriptor that plans against an [ArraySymbol]() or a deferred tree contracts against the arrays those shapes describe. [ArrayMaterialize]() is the step between, and [ArrayTier]() is what the gate reads.
+A plan is solved from shapes and its steps keep each tier, so the descriptor that plans against an [ArraySymbol]() contracts it into the inert tree [ArrayMaterialize]() computes once the symbol has a value, and the descriptor that plans against a deferred tree contracts the array the tree computes.

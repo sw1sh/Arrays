@@ -24,16 +24,17 @@ RelatedTutorials: [IndexNotation]
 - A prepared [ArrayIndexPattern]() stands in the descriptor position as a prepared [ArrayIndexPlan]() does, its sizes solved against the operands rather than carried; either object is taken apart rather than compiled again, which is the compile-once path.
 - An axis on the output is carried; an axis absent from the output is summed over every slot carrying it.
 - By occurrence count: one occurrence sums that slot, two are an ordinary contraction, three and more are an axis shared by three operands, and an axis repeated within one input shape and absent from the output is self-contracted, which is the trace.
-- Operands sharing an axis the output carries are aligned to a common frame and multiplied elementwise before the contraction, which is what makes a batch matrix product, a Hadamard product and a column scaling ordinary descriptors.
+- An axis the output carries that two or more operands supply is a batch index, which is what makes a batch matrix product, a Hadamard product and a column scaling ordinary descriptors. It is a delta among the operands of the contraction, one slot tied to each occurrence and one left free to carry the axis to the output, and [ArrayContract]() contracts it block by block, at the cost of the result rather than of the operands' outer product.
 - With no output shape written the output is the axes occurring exactly once, in first-occurrence order rather than sorted; [ArrayIndexPattern]() owns the `"DefaultOutput"` rule and the difference between an empty output side and a missing one.
-- The steps keep the container they are handed: a [SparseArray]() and a packed array come back as themselves whatever steps the descriptor emits, a merge that emits no contraction node included.
-- The contraction step is lowered to [ArrayContract]() over the inactive [TensorProduct]() of its operands, which contracts them against each other without ever building that product; a rank-0 operand is kept out of the product and multiplied back in.
+- The steps keep the container they are handed: a [SparseArray]() and a packed array come back as themselves whatever steps the descriptor emits, a batch index included.
+- The contraction step is lowered to [ArrayContract]() over the inactive [TensorProduct]() of its operands, which contracts them against each other without ever building that product; a rank-0 operand is a factor of the same node.
 - With the sum-of-products combiner every step is linear in its operands, so the unit of a [QuantityArray]() is lifted off it, the steps run on the magnitudes, and the product of the units goes back on the result.
 - The result is a [QuantityArray]() in the product unit whatever steps the descriptor emits, an ordinary [Quantity]() where the result is rank 0 and there is no [QuantityArray]() to build, and an unwrapped array where the units cancel and their product is a plain number.
 - A [QuantityArray]() carrying a unit per column has no single unit to lift; one such operand leaves the whole operand set as it stands, and the elements carry their own units.
 - A [NumericArray](), a [TabularColumn](), a [Tabular](), a [Dataset](), an [EventSeries]() and a [ByteArray]() are materialized first, [TensorProduct]() having no evaluation on those heads, and an [ArrayObject]() is unwrapped at the door and the result is the bare container it holds; [ArrayIndexTransform]() keeps the same door.
 - A [List]() in the second argument is the operand list, so a single array operand is given as a one-element list.
-- The operand set is joined and the explicit tier is required; [ArrayMaterialize]() brings a lazy or symbolic operand to one, and [ArrayTier]() is what the gate reads.
+- Every step keeps a symbolic operand inert and a lazy one lazy, so the result has the tier the operands join to. A symbolic operand gives an inert contraction tree whose [ArrayDimensions]() is the output shape, which [ArrayMaterialize]() computes once its symbols are given values; a lazy operand gives a lazy container where its head can rebuild through the steps, and a contraction that leaves no array gives a scalar expression in the lazy operand's parameter.
+- A deferred tree, a structural tree over explicit containers alone, is materialized at the door, since it has a value and merely defers computing it.
 - The options are:
 
 | Option | Settings |
@@ -47,7 +48,7 @@ RelatedTutorials: [IndexNotation]
 
 ## Basic Examples
 
-<!-- #| annotation: 05.09.26: Design review - the contraction is ArrayContract over an inactive TensorProduct, which is that symbol's spelling for an operand set, so the step names the operation rather than the way it is executed. What ArrayContract does with the node is what the index layer needs of it: the operands are contracted against each other, the outer product is never built, and the containers survive - a SparseArray set gives a SparseArray, packed operands stay packed, exact operands stay exact and a structured atom keeps its structure. TensorContract takes a slot group of any length, so a hyperedge needs no pairwise decomposition and the plan carries groups rather than pairs. The unit lift is descriptor-wide rather than one wrapper rule per primitive: with the sum-of-products combiner the plan is multilinear in its operands and registers 1..n are read once each, so the result scales by each operand's unit exactly once, no step depends on the units, and the plan expression is unchanged - what it runs on is the magnitudes. The tier gate is a refusal and not a materialization: the merge and broadcast steps have no form that keeps a lazy or symbolic operand lazy or symbolic across them, and declining leaves the caller the choice ArrayMaterialize gives them. -->
+<!-- #| annotation: 05.09.26: Design review - the contraction is ArrayContract over an inactive TensorProduct, which is that symbol's spelling for an operand set, so the step names the operation rather than the way it is executed. What ArrayContract does with the node is what the index layer needs of it: the operands are contracted against each other, the outer product is never built, and the containers survive - a SparseArray set gives a SparseArray, packed operands stay packed, exact operands stay exact and a structured atom keeps its structure. TensorContract takes a slot group of any length, so a hyperedge needs no pairwise decomposition and the plan carries groups rather than pairs. The unit lift is descriptor-wide rather than one wrapper rule per primitive: with the sum-of-products combiner the plan is multilinear in its operands and registers 1..n are read once each, so the result scales by each operand's unit exactly once, no step depends on the units, and the plan expression is unchanged - what it runs on is the magnitudes. A batch index is a delta in the contraction rather than an alignment of the operands into one frame: the alignment builds their outer product before summing anything, and it has no form that keeps a symbolic operand inert, while the delta costs what the result costs and is one more operand of a node that already stays inert or lazy. It is written inactive in the plan because the evaluator unpacks a packed array beside an active one. -->
 
 A shared axis absent from the output contracts the two operands, giving the matrix product:
 
@@ -140,7 +141,7 @@ ArrayIndexContract["ij,jk", {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}]
 
 <!-- => {{19, 22}, {43, 50}} -->
 
-### The aligned merge
+### Batch indices
 
 Two axes carried by both operands and by the output make the elementwise product:
 
@@ -169,6 +170,52 @@ ArrayIndexContract["ij,j->i", {{{1, 2}, {3, 4}}, {10, 20}}]
 ```
 
 <!-- => {50, 110} -->
+
+### Symbolic and lazy operands
+
+A symbolic operand gives the inert contraction tree:
+
+```wl
+tree = ArrayIndexContract["ij,jk->ik", {MatrixSymbol["A", {2, 2}], {{5, 6}, {7, 8}}}]
+```
+
+<!-- => TensorContract[Inactive[TensorProduct][MatrixSymbol["A", {2, 2}], {{5, 6}, {7, 8}}], {{2, 3}}] -->
+
+The tree is a symbolic container of the output's shape:
+
+```wl
+ArrayDimensions[tree]
+```
+
+<!-- => {2, 2} -->
+
+Given a value for the symbol, [ArrayMaterialize]() computes it:
+
+```wl
+ArrayMaterialize[tree /. MatrixSymbol["A", {2, 2}] -> {{1, 2}, {3, 4}}]
+```
+
+<!-- => {{19, 22}, {43, 50}} -->
+
+---
+
+A batch index over symbolic operands is a delta among the operands of the inert contraction:
+
+```wl
+ArrayIndexContract["bij,bjk->bik", {ArraySymbol["A", {2, 2, 3}], ArraySymbol["B", {2, 3, 4}]}]
+```
+
+<!-- => Transpose[Inactive[TensorContract][Inactive[TensorProduct][ArraySymbol["A", {2, 2, 3}], ArraySymbol["B", {2, 3, 4}], SymbolicDeltaProductArray[{2, 2, 2}, {{1, 2, 3}}]], {{3, 5}, {1, 7}, {4, 8}}], {2, 3, 1}] -->
+
+---
+
+A lazy operand stays lazy, the contraction made against the body of the [Function]():
+
+```wl
+ArrayIndexContract["ij,j->i", {Function[t, {{Cos[t], -Sin[t]}, {Sin[t], Cos[t]}}], {1, 0}}]
+```
+
+<!-- => Function[t, {Cos[t], Sin[t]}] -->
 
 ### Dialects
 
@@ -483,13 +530,13 @@ ArrayIndexContract["i j -> i [j]", {{{1, 2}, {3, 4}}}]
 
 ---
 
-An operand set that joins to the symbolic tier is declined, and [ArrayMaterialize]() brings such an operand to the explicit tier; [ArrayIndexTransform]() declines a lazy operand the same way:
+A contraction that leaves no array has no lazy form, so over a lazy operand it gives a scalar expression in the operand's parameter rather than a lazy container:
 
 ```wl
-ArrayIndexContract["ij,jk->ik", {MatrixSymbol["A", {2, 2}], {{5, 6}, {7, 8}}}]
+ArrayIndexContract["i,i->", {Piecewise[{{{1, 2}, z < 0}}, {3, 4}], {1, 1}}]
 ```
 
-<!-- => ArrayIndexContract::tier message, then ArrayIndexContract["ij,jk->ik", {MatrixSymbol["A", {2, 2}], {{5, 6}, {7, 8}}}] unevaluated -->
+<!-- => Piecewise[{{1, z < 0}}, 3] + Piecewise[{{2, z < 0}}, 4] -->
 
 ---
 

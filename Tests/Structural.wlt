@@ -813,6 +813,102 @@ VerificationTest[
     TestID -> "delta-random-operand-sets-match-the-dense-contraction"
 ]
 
+(* A delta may be given inactive, and is then the delta it activates to.  The
+   evaluator unpacks a packed array beside an active SymbolicDeltaProductArray
+   and not beside an inactive one, so the operands reach the contraction packed
+   and the result comes back packed. *)
+VerificationTest[
+    BlockRandom[
+        SeedRandom[5];
+        With[{x = RandomReal[1, {8, 3, 2}], y = RandomReal[1, {8, 2, 4}],
+                active = SymbolicDeltaProductArray[{8, 8, 8}, {{1, 2, 3}}],
+                inactive = Inactive[SymbolicDeltaProductArray][{8, 8, 8}, {{1, 2, 3}}]},
+            {
+                Developer`PackedArrayQ[First[Inactive[TensorProduct][x, active]]],
+                Developer`PackedArrayQ[First[Inactive[TensorProduct][x, inactive]]],
+                ArrayContract[Inactive[TensorProduct][x, y, inactive], {{1, 7}, {4, 8}, {3, 5}}] ==
+                    ArrayContract[Inactive[TensorProduct][x, y, active], {{1, 7}, {4, 8}, {3, 5}}],
+                Developer`PackedArrayQ[ArrayContract[Inactive[TensorProduct][x, y, inactive], {{1, 7}, {4, 8}, {3, 5}}]],
+                ArrayContract[Inactive[SymbolicIdentityArray][{2, 3}], {{1, 3}, {2, 4}}]
+            }
+        ]
+    ],
+    {False, True, True, True, 6},
+    TestID -> "delta-an-inactive-delta-keeps-its-neighbours-packed"
+]
+
+(* Beside a symbolic operand a delta stays in the node, which is written with
+   the inactive contraction: the active TensorContract contracts by its own rule
+   the moment the symbols are given values, and reads a delta as a scalar.
+   ArrayMaterialize contracts the node, delta and all, once they have them. *)
+VerificationTest[
+    With[{tree = ArrayContract[
+            Inactive[TensorProduct][ArraySymbol["A", {2, 2}], {{5, 6}, {7, 8}}, SymbolicDeltaProductArray[{2, 2, 2}, {{1, 2, 3}}]],
+            {{1, 5}, {3, 6}}
+        ]},
+        {
+            Head[tree],
+            ArraySymbolicQ[tree],
+            ArrayDimensions[tree],
+            ArrayMaterialize[tree /. ArraySymbol["A", {2, 2}] -> {{1, 2}, {3, 4}}] ===
+                Table[{{1, 2}, {3, 4}}[[b, i]] {{5, 6}, {7, 8}}[[b, k]], {i, 2}, {k, 2}, {b, 2}]
+        }
+    ],
+    {Inactive[TensorContract], True, {2, 2, 2}, True},
+    TestID -> "delta-beside-a-symbolic-operand-stays-inert-and-materializes"
+]
+
+(* Beside a lazy operand a delta is kept, not expanded: the rebuild hands the
+   delta route the operand's own value in its place, and the result stays lazy. *)
+VerificationTest[
+    With[{x = N[ArrayReshape[Range[12], {2, 3, 2}]], y = N[ArrayReshape[Range[16], {2, 2, 4}]]},
+        With[{result = ArrayContract[
+                Inactive[TensorProduct][Function[t, t x], y, Inactive[SymbolicDeltaProductArray][{2, 2, 2}, {{1, 2, 3}}]],
+                {{1, 7}, {4, 8}, {3, 5}}
+            ]},
+            {ArrayLazyQ[result], ArrayDimensions[result], result[2.] == 2 Transpose[MapThread[Dot, {x, y}], {3, 1, 2}]}
+        ]
+    ],
+    {True, {3, 4, 2}, True},
+    TestID -> "delta-beside-a-lazy-operand-stays-lazy"
+]
+
+(* The container of a delta contraction is the kernel's own: a mixed sparse and
+   dense set follows Times where nothing is summed and Dot where something is.
+   A unit per column goes in as the elements, each carrying its own unit. *)
+VerificationTest[
+    With[{s = SparseArray[{{1., 0.}, {0., 2.}}], d = Inactive[SymbolicDeltaProductArray][{2, 2, 2}, {{1, 2, 3}}]},
+        {
+            Head[ArrayContract[Inactive[TensorProduct][s, {3., 4.}, d], {{1, 4}, {3, 5}}]],
+            Head[ArrayContract[Inactive[TensorProduct][s, {{3., 4.}, {5., 6.}}, d], {{1, 5}, {3, 6}, {2, 4}}]],
+            ArrayContract[
+                Inactive[TensorProduct][QuantityArray[{{1, 2}, {3, 4}}, {"Meters", "Seconds"}], {{1, 2}, {3, 4}}, d, d],
+                {{1, 5}, {3, 6}, {2, 8}, {4, 9}}
+            ]
+        }
+    ],
+    {
+        SparseArray,
+        List,
+        {{Quantity[1, "Meters"], Quantity[4, "Seconds"]}, {Quantity[9, "Meters"], Quantity[16, "Seconds"]}}
+    },
+    TestID -> "delta-container-follows-the-kernels-arithmetic"
+]
+
+(* A bare scalar among explicit operands is multiplied in after the contraction,
+   which keeps a packed result packed; and a product over an array with a scalar
+   factor, the node a scale over a symbolic operand leaves, materializes once
+   the symbol is given a value. *)
+VerificationTest[
+    {
+        Developer`PackedArrayQ[ArrayContract[Inactive[TensorProduct][Developer`ToPackedArray[{{1., 2.}, {3., 4.}}], 2.], {}]],
+        ArrayContract[Inactive[TensorProduct][3, {{1, 2}, {3, 4}}, {1, 1}], {{2, 3}}],
+        ArrayMaterialize[ArrayContract[Inactive[TensorProduct][ArraySymbol["A", {2, 2}], 3], {}] /. ArraySymbol["A", {2, 2}] -> {{1, 2}, {3, 4}}]
+    },
+    {True, {9, 21}, {{3, 6}, {9, 12}}},
+    TestID -> "operandset-scalar-factors-are-multiplied-in"
+]
+
 EndTestSection[]
 
 

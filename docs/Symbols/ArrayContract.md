@@ -26,8 +26,12 @@ RelatedGuides: [Arrays]
 - A node of ONE operand has no product to keep that operand out of, so it is contracted bare and gives what contracting the container itself gives.
 - A [SymbolicDeltaProductArray](), a [SymbolicIdentityArray]() and a [SymbolicOnesArray](), bare or in a node whose other operands are [List]()s, [SparseArray]()s and scalars, are contracted by identifying the indices they tie together and are never expanded. Deltas alone give a delta, values that land on a diagonal of the output give a [SparseArray](), and otherwise the result is the contraction of the remaining operands.
 - An index a delta ties across two operands while keeping a leg of its own is a batch index of the pair, which is multiplied block by block rather than through the tensor product of the two, at the cost of the result. A delta whose groups tie levels of different dimensions contracts through its dense form.
+- A delta may be given inactive, as <code>[Inactive]()[[SymbolicDeltaProductArray]()][...]</code> and its identity and ones counterparts, and is then the delta it activates to. The evaluator unpacks a packed array beside an active delta and not beside an inactive one, so a node written with inactive deltas reaches the contraction with its operands packed.
+- The container of a delta contraction is the one the kernel's arithmetic gives: an all-[SparseArray]() set gives a [SparseArray](), and a set mixing sparse and dense operands gives a [SparseArray]() where nothing is summed between them, as [Times]() does, and a dense array where something is, as [Dot]() does. A [QuantityArray]() with a unit per column contracts as the array of its elements, each carrying its own unit.
+- A delta beside a lazy operand is kept rather than expanded, the lazy operand's rebuild handing the delta route its value, and beside a symbolic operand it stays in the inert node.
 - The result is a container of the tier [ArrayUnify]() joins the operands to. Explicit operands contract through the node, which evaluates immediately: contracting the two levels of a matrix gives its trace.
-- An operand set carrying a symbolic container gives an inactive [TensorContract]() node, and [ArrayDimensions]() reads the contracted shape off that node without materializing it.
+- An operand set carrying a symbolic container gives an inert [TensorContract]() node, and [ArrayDimensions]() reads the contracted shape off that node without materializing it. A node holding a delta, or a group that is not a pair, is written <code>[Inactive]()[[TensorContract]()]</code>, since the active [TensorContract]() contracts by its own rule as soon as its symbols have values, and that rule reads a delta as a scalar and declines a one-slot sum and a generalized trace; [ArrayMaterialize]() contracts such a node once its symbols have values.
+- A bare scalar among explicit operands is a factor of the contraction and is multiplied in after it, which keeps a packed result packed; among symbolic operands it stays in the node.
 - An operand set carrying exactly one lazy container and no symbolic one is contracted against the value grid, the branch values or the body of that operand and stays lazy where its head supplies a lazy-preserving rebuild.
 - An operand set carrying several lazy containers, and a contraction that leaves no array at all, have no lazy form between them: every lazy operand is expanded per scalar and the contraction is explicit, giving an array, or for a full contraction a scalar, of expressions that substitute to the contracted values.
 - [TensorContract]() does not evaluate on the heads that are not [ArrayQ](), so a [NumericArray](), a [ByteArray](), a [Dataset](), a [Tabular]() and an [ArrayObject]() handle contract their materialized data, alone or as an operand of a node. A [QuantityArray]() is [ArrayQ]() and contracts natively, keeping its unit.
@@ -366,6 +370,14 @@ Developer`PackedArrayQ[First[Inactive[TensorProduct][Developer`ToPackedArray[{1.
 
 ```wl
 Developer`PackedArrayQ[ArrayContract[Inactive[TensorProduct][Developer`ToPackedArray[{1., 2.}], SymbolicIdentityArray[{2}]], {{1, 2}}]]
+```
+
+<!-- => True -->
+
+The inactive spelling of the delta leaves the packed array beside it packed, and contracts the same:
+
+```wl
+Developer`PackedArrayQ[First[Inactive[TensorProduct][Developer`ToPackedArray[{1., 2.}], Inactive[SymbolicIdentityArray][{2}]]]]
 ```
 
 <!-- => True -->

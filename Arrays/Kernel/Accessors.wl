@@ -161,7 +161,28 @@ ArrayMaterialize[a_ ? lazyContainerQ] := lazyMaterialize[a]
    Times threads over an array, so the repair is to take the scalars out and
    multiply them back in. *)
 ArrayMaterialize[a_ ? deferredTreeQ] :=
-    deferredActivate @ Activate[unwrapArrayObjects[a], ArrayContract | TensorContract]
+    deferredActivate @ Activate[deferredDeltaContractions[unwrapArrayObjects[a]], ArrayContract | TensorContract]
+
+(* A contraction over a product that holds a DELTA among its operands, or whose
+   groups are not all pairs, is activated as ArrayContract rather than as
+   TensorContract.  TensorContract reads a delta as a scalar factor of the
+   product and declines a one-slot sum and a hyperedge; ArrayContract takes all
+   three, contracting a delta by identifying the indices it ties, which is also
+   what keeps a delta over large indices from being expanded.  The walk goes
+   through every node of the classification's vocabulary, active or inactive -
+   an index plan leaves the contraction under an active Transpose - and through
+   nothing else, for the scale-out's reason below: a leaf is data, and
+   traversing a packed array element by element would be both slow and
+   destructive. *)
+
+deferredDeltaContractions[Inactive[TensorContract][Inactive[TensorProduct][args___], c_]] /;
+        AnyTrue[{args}, deltaOperandQ] || ! MatchQ[c, {{_, _} ...}] :=
+    Inactive[ArrayContract][Inactive[TensorProduct] @@ Map[deferredDeltaContractions, {args}], c]
+
+deferredDeltaContractions[node_] /; ListQ[structuralNodeOperands[node]] :=
+    Head[node] @@ Map[deferredDeltaContractions, List @@ node]
+
+deferredDeltaContractions[leaf_] := leaf
 
 (* The second pass and the repair between them, factored out because
    ArrayContract reaches a residual product of its own: it calls TensorContract

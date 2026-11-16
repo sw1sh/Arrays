@@ -363,10 +363,23 @@ ArraySymbolicQ[___] := False
    (Structural.wl). *)
 
 deferredTreeQ[a_] := With[{operands = structuralNodeOperands[a]},
-    ListQ[operands] && AllTrue[operands, deferredLeafQ]
+    ListQ[operands] && If[ MatchQ[a, Inactive[TensorProduct][___]],
+        AnyTrue[operands, deferredLeafQ] && AllTrue[operands, deferredLeafQ[#] || scalarFactorQ[#] &],
+        AllTrue[operands, deferredLeafQ]
+    ]
 ]
 
 deferredLeafQ[a_] := ArrayExplicitQ[a] || deferredTreeQ[a]
+
+(* A tensor product may also carry a SCALAR factor - a number or any expression
+   that is not an array - beside its array operands, which is how ArrayContract
+   keeps a scale in a node over a symbolic operand.  Once the symbol is given a
+   value the product has one too: a scalar factor scales it, which is what the
+   scale-out of Accessors.wl computes.  A product of scalars alone is a scalar
+   and no array, so a deferred product needs an array leaf.  The test asks the
+   lazy registry only whether the head is registered: asking a lazy leaf whether
+   it is a container may evaluate it, and recognition runs no user code. *)
+scalarFactorQ[a_] := ! ListQ[a] && ! lazyHeadRegisteredQ[a] && ! ArrayExplicitQ[a] && ! ArraySymbolicQ[a]
 
 
 ArrayContainerQ[a_] := ArrayExplicitQ[a] || ArrayLazyQ[a] || ArraySymbolicQ[a]

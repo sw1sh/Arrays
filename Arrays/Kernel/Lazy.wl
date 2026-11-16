@@ -28,6 +28,7 @@ PackageExport[ArrayDeclareShape]
 
 PackageScope[RegisterLazyHead]
 PackageScope[lazyContainerQ]
+PackageScope[lazyHeadRegisteredQ]
 PackageScope[lazyDimensions]
 PackageScope[lazyMaterialize]
 PackageScope[lazySubstitute]
@@ -101,6 +102,12 @@ lazyHandler[expr_, key_] := Lookup[Lookup[$lazyRegistry, lazyHeadSymbol[expr], <
 lazyContainerQ[expr_] := With[{handler = lazyHandler[expr, "ContainerQ"]},
     ! MissingQ[handler] && TrueQ[handler[expr]]
 ]
+
+(* Whether the head is a registered one at all, asked without calling a
+   handler: a "ContainerQ" handler may evaluate the expression, an unapplied
+   Function's body among them, and a recognizer that must not run user code
+   asks this instead. *)
+lazyHeadRegisteredQ[expr_] := KeyExistsQ[$lazyRegistry, lazyHeadSymbol[expr]]
 
 
 lazyDimensions[expr_] := With[{handler = lazyHandler[expr, "Dimensions"]},

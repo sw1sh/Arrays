@@ -9,9 +9,11 @@ PackageExport[ArrayMap]
 PackageExport[ArrayReplaceAll]
 PackageExport[ArrayConjugate]
 
+PackageScope[deltaOperandQ]
+
 ArrayTranspose::usage = "ArrayTranspose[a, perm] transposes an array container by the given permutation, composing permutations of nested Transpose forms, and keeping symbolic containers in unevaluated form; a lazy container stays lazy where its head supplies a lazy-preserving rebuild (the value grid of an InterpolatingFunction, the branch values of a Piecewise, the body of a Function) and materializes through ArrayMaterialize where it does not, as for a ParametricFunction."
 
-ArrayContract::usage = "ArrayContract[a, pairs] contracts the given index pairs of an array container, keeping symbolic containers in inactive TensorContract form; a lazy container contracts through its head's lazy-preserving rebuild and stays lazy, unless the contraction leaves no array at all. The pairs are slot groups: a group of two slots is an ordinary contraction, a group of one slot sums that slot, and a group of three or more is a generalized trace over the slots it names; every slot names a level the operands have and names it once, and a specification that does not is left as an inactive TensorContract node without the tensor product being built. A List argument is ONE array, whose own levels the pairs number, so ArrayContract[{{1, 2}, {3, 4}}, {{1, 2}}] is a trace, matching its SparseArray form; the equivalence holds for a List whose elements are not themselves array containers.\nArrayContract[Inactive[TensorProduct][a1, a2, ...], pairs] contracts an operand SET, the pairs numbering the levels of the operands concatenated. The operands are contracted against each other and the tensor product is never built, which is what keeps the containers: an all-SparseArray set gives a SparseArray, packed operands give a packed array, exact operands stay exact, and a QuantityArray set gives a QuantityArray carrying the product of the units. A contraction over a SparseArray with a non-zero background, and one over two structured atoms such as SymmetrizedArray, is dense, that being what contracting the operands pairwise gives; a node of ONE operand has no product to keep that operand out of and contracts it bare, so a single structured operand keeps its structure. A SymbolicDeltaProductArray, a SymbolicIdentityArray and a SymbolicOnesArray, bare or in a node whose other operands are Lists, SparseArrays and scalars, are contracted by identifying the indices they tie together and are never expanded: deltas alone give a delta, values that land on a diagonal of the output give a SparseArray, and otherwise the result is the contraction of the remaining operands, an index a delta ties across two of them while keeping a leg of its own being multiplied block by block rather than through their tensor product; a delta whose groups tie levels of different dimensions contracts through its dense form. The result is a container of the tier ArrayUnify joins the operands to: explicit operands contract through the tensor product, an operand set carrying a symbolic container gives a symbolic node, and one carrying exactly one lazy container and no symbolic one is contracted against the value grid, branch values or body of that operand and stays lazy where its head supplies a lazy-preserving rebuild. An operand set carrying SEVERAL lazy containers, and a contraction that leaves no array at all, have no lazy form between them: every lazy operand is expanded per scalar and the contraction is explicit, giving an array - or, for a full contraction, a scalar - of expressions that substitute to the contracted values. A NumericArray, a ByteArray, a Dataset, a Tabular and an ArrayObject handle among the operands are materialized first, TensorContract having no evaluation on those heads. A list that holds an array container and is not a list of plain Lists is an operand set given in place of a node, and is declined with a message naming the tensor-product spelling, since a List already means one array; a declined call is not an array container, so it has no tier and no dimensions, no accessor answers for it, and Normal of it is the call itself, its operands unconverted."
+ArrayContract::usage = "ArrayContract[a, pairs] contracts the given index pairs of an array container, keeping symbolic containers in inactive TensorContract form; a lazy container contracts through its head's lazy-preserving rebuild and stays lazy, unless the contraction leaves no array at all. The pairs are slot groups: a group of two slots is an ordinary contraction, a group of one slot sums that slot, and a group of three or more is a generalized trace over the slots it names; every slot names a level the operands have and names it once, and a specification that does not is left as an inactive TensorContract node without the tensor product being built. A List argument is ONE array, whose own levels the pairs number, so ArrayContract[{{1, 2}, {3, 4}}, {{1, 2}}] is a trace, matching its SparseArray form; the equivalence holds for a List whose elements are not themselves array containers.\nArrayContract[Inactive[TensorProduct][a1, a2, ...], pairs] contracts an operand SET, the pairs numbering the levels of the operands concatenated. The operands are contracted against each other and the tensor product is never built, which is what keeps the containers: an all-SparseArray set gives a SparseArray, packed operands give a packed array, exact operands stay exact, and a QuantityArray set gives a QuantityArray carrying the product of the units. A contraction over a SparseArray with a non-zero background, and one over two structured atoms such as SymmetrizedArray, is dense, that being what contracting the operands pairwise gives; a node of ONE operand has no product to keep that operand out of and contracts it bare, so a single structured operand keeps its structure. A SymbolicDeltaProductArray, a SymbolicIdentityArray and a SymbolicOnesArray, bare or in a node whose other operands are Lists, SparseArrays and scalars, are contracted by identifying the indices they tie together and are never expanded: deltas alone give a delta, values that land on a diagonal of the output give a SparseArray, and otherwise the result is the contraction of the remaining operands, an index a delta ties across two of them while keeping a leg of its own being multiplied block by block rather than through their tensor product; a delta whose groups tie levels of different dimensions contracts through its dense form. A delta given inactive, as Inactive[SymbolicDeltaProductArray][...], is the delta it activates to, and leaves the packed arrays beside it packed where the evaluator unpacks them beside an active one. The container of a delta contraction is the one the kernel's arithmetic gives: a set mixing sparse and dense operands gives a SparseArray where nothing is summed between them and a dense array where something is, and a QuantityArray with a unit per column contracts as the array of its elements. A delta beside a lazy operand is kept for the lazy rebuild rather than expanded, and beside a symbolic one stays in the inert node. The result is a container of the tier ArrayUnify joins the operands to: explicit operands contract through the tensor product, a bare scalar among them being multiplied in after the contraction, which keeps a packed result packed, an operand set carrying a symbolic container gives a symbolic node, written with Inactive[TensorContract] where it holds a delta or a group that is not a pair, since the active TensorContract contracts by its own rule once the symbols have values and ArrayMaterialize is what contracts such a node, and one carrying exactly one lazy container and no symbolic one is contracted against the value grid, branch values or body of that operand and stays lazy where its head supplies a lazy-preserving rebuild. An operand set carrying SEVERAL lazy containers, and a contraction that leaves no array at all, have no lazy form between them: every lazy operand is expanded per scalar and the contraction is explicit, giving an array - or, for a full contraction, a scalar - of expressions that substitute to the contracted values. A NumericArray, a ByteArray, a Dataset, a Tabular and an ArrayObject handle among the operands are materialized first, TensorContract having no evaluation on those heads. A list that holds an array container and is not a list of plain Lists is an operand set given in place of a node, and is declined with a message naming the tensor-product spelling, since a List already means one array; a declined call is not an array container, so it has no tier and no dimensions, no accessor answers for it, and Normal of it is the call itself, its operands unconverted."
 
 ArrayPart::usage = "ArrayPart[a, {i1, i2, ...}] gives the part of an array container at the given indices, slicing symbolic containers structurally and expanding a lazy container per scalar first, since Part on an inert lazy form reaches the expression tree rather than the array; a deferred structural tree, whose leaves are all explicit, is activated first for the same reason, and a structural tree that carries a symbolic container is left unevaluated rather than sliced wrongly; All entries keep the corresponding level."
 
@@ -213,27 +215,47 @@ expandedOperands[arrays_List] := Replace[arrays, a_ ? lazyContainerQ :> ArrayMat
    node holding a delta has had every packed array in it unpacked by the
    evaluator (see deltaPartnerArray), and each clause reading the dimensions of
    an unpacked operand walks it, which on a state of 2^19 entries costs more
-   than the contraction does. *)
+   than the contraction does.
 
-deltaSlotGroups[SymbolicDeltaProductArray[dims : {__Integer ? Positive}, groups : {{__Integer} ...}]] /;
+   A delta may also be given INACTIVE, as Inactive[SymbolicDeltaProductArray]
+   and the like, and is then the delta it activates to.  That spelling exists for
+   the unpacking: the evaluator unpacks a packed array beside an active delta
+   but not beside an inactive one, so a node that writes its deltas inactive
+   reaches the contraction with its operands still packed, and the index layer's
+   plans write theirs that way.  Where the delta route declines, the deltas are
+   activated before any other clause sees them. *)
+
+$deltaHead = SymbolicDeltaProductArray | Inactive[SymbolicDeltaProductArray];
+
+$identityHead = SymbolicIdentityArray | Inactive[SymbolicIdentityArray];
+
+$onesHead = SymbolicOnesArray | Inactive[SymbolicOnesArray];
+
+deltaSlotGroups[($deltaHead)[dims : {__Integer ? Positive}, groups : {{__Integer} ...}]] /;
         SubsetQ[Range[Length[dims]], Flatten[groups]] && DuplicateFreeQ[Flatten[groups]] :=
     groups
 
-deltaSlotGroups[SymbolicIdentityArray[dims : {__Integer ? Positive}]] := Table[{i, Length[dims] + i}, {i, Length[dims]}]
+deltaSlotGroups[($identityHead)[dims : {__Integer ? Positive}]] := Table[{i, Length[dims] + i}, {i, Length[dims]}]
 
-deltaSlotGroups[SymbolicOnesArray[{__Integer ? Positive}]] := {}
+deltaSlotGroups[($onesHead)[{__Integer ? Positive}]] := {}
 
 deltaSlotGroups[_] := Missing["NotADelta"]
 
 deltaOperandQ[a_] := ListQ[deltaSlotGroups[a]]
 
-deltaDimensions[SymbolicDeltaProductArray[dims_, _]] := dims
+deltaDimensions[($deltaHead)[dims_, _]] := dims
 
-deltaDimensions[SymbolicIdentityArray[dims_]] := Join[dims, dims]
+deltaDimensions[($identityHead)[dims_]] := Join[dims, dims]
 
-deltaDimensions[SymbolicOnesArray[dims_]] := dims
+deltaDimensions[($onesHead)[dims_]] := dims
 
-deltaPartnerQ[a : (_List | _SparseArray)] := ArrayQ[a]
+inactiveDeltaQ[a_] := MatchQ[a, Inactive[SymbolicDeltaProductArray | SymbolicIdentityArray | SymbolicOnesArray][___]]
+
+activeDelta[Inactive[h_][args___]] := h[args]
+
+deltaPartnerQ[a : (_List | _SparseArray | _SymmetrizedArray)] := ArrayQ[a]
+
+deltaPartnerQ[a_QuantityArray] := ListQ[a["UnitBlock"]]
 
 deltaPartnerQ[a_] := ! ArrayContainerQ[a] && ArrayRank[a] === 0
 
@@ -243,10 +265,20 @@ deltaPartnerQ[a_] := ! ArrayContainerQ[a] && ArrayRank[a] === 0
    SymbolicIdentityArray, a SymbolicOnesArray or a SymbolicZerosArray unpacks
    every packed array beside it when it evaluates, the node a delta arrives in
    among them, and packing it again costs a small part of what the steps below
-   lose on an unpacked operand. *)
+   lose on an unpacked operand.  A SymmetrizedArray goes in as the SparseArray of
+   its elements, since the steps below read stored entries and its symmetry has
+   no counterpart in a contraction against other operands.  A QuantityArray with
+   a unit per column goes in as the array of its elements, each carrying its own
+   unit: the dense route below would add a delta's zero products of one unit to
+   the values of another.  One with a single unit takes the dense route, which
+   carries the unit through. *)
 deltaPartnerArray[a_SparseArray] /; ! TrueQ[PossibleZeroQ[a["Background"]]] := Developer`ToPackedArray[Normal[a]]
 
 deltaPartnerArray[a_List] := Developer`ToPackedArray[a]
+
+deltaPartnerArray[a_SymmetrizedArray] := SparseArray[a]
+
+deltaPartnerArray[a_QuantityArray] /; ListQ[a["UnitBlock"]] := Normal[a]
 
 deltaPartnerArray[a_] := a
 
@@ -301,7 +333,8 @@ classSumOut[{a_, vars_List}, keep_List, dimOf_] := Module[{stay, drop, m, summed
    sparse the blocks are multiplied in one product with the block-diagonal
    SparseArray of the first operand, which keeps a sparse operand sparse.  Dense
    blocks are multiplied by a Dot each, unless a block is so small that the call
-   would cost more than the arithmetic, and then a summed index at a time across
+   would cost more than the arithmetic, or there is no summed index at all - an
+   elementwise product, a scaling - and then a summed index at a time across
    every block at once.  MapThread and not Table runs the Dots: a Table of 250
    steps or more is compiled, and the operands sit in its body as constants. *)
 classBlockDiagonal[x_] := Module[{s = SparseArray[x], nb, nx, ns, positions},
@@ -325,7 +358,7 @@ classBatchedDot[x_, y_] := Module[{nb, nx, ns, ny},
             ArrayReshape[First[x] . First[y], {1, nx, ny}],
         MatchQ[x, _SparseArray] || MatchQ[y, _SparseArray],
             ArrayReshape[classBlockDiagonal[x] . ArrayReshape[y, {nb ns, ny}], {nb, nx, ny}],
-        nx ns ny <= 128,
+        ns === 1 || nx ns ny <= 128,
             Total[Table[x[[All, All, j]] Transpose[ConstantArray[y[[All, j, All]], nx], {2, 1, 3}], {j, ns}]],
         True,
             Developer`ToPackedArray[MapThread[Dot, {x, y}]]
@@ -340,11 +373,18 @@ classPairContract[{x_, vx_List}, {y_, vy_List}, keep_List, dimOf_] := Module[
     xown = Select[vx, ! MemberQ[vy, #] &];
     yown = Select[vy, ! MemberQ[vx, #] &];
     size = Times @@ Lookup[dimOf, #] &;
+    vars = Join[batch, xown, yown];
+    (* Nothing summed and every class of one operand shared - an elementwise
+       product, a scaling of rows or columns - is one Times: it threads the
+       operand whose classes are all batch classes over the leading levels of the
+       other, and keeps a packed operand packed and a sparse one sparse. *)
+    If[ summed === {} && (xown === {} || yown === {}),
+        Return[{classAlign[x, vx, Join[batch, xown]] * classAlign[y, vy, Join[batch, yown]], vars}, Module]
+    ];
     product = classBatchedDot[
         ArrayReshape[classAlign[x, vx, Join[batch, xown, summed]], {size[batch], size[xown], size[summed]}],
         ArrayReshape[classAlign[y, vy, Join[batch, summed, yown]], {size[batch], size[summed], size[yown]}]
     ];
-    vars = Join[batch, xown, yown];
     {If[vars === {}, product[[1, 1, 1]], ArrayReshape[product, Lookup[dimOf, vars]]], vars}
 ]
 
@@ -475,15 +515,26 @@ deltaContract[arrays_List, c_] := Module[
         True, ConstantArray[1, Lookup[dimOf, outClasses]]
     ];
     If[ factor =!= 1, values = factor values];
-    values = Which[
-        partners =!= {} && AllTrue[partners, MatchQ[_SparseArray]] && ListQ[values], SparseArray[values],
-        partners =!= {} && NoneTrue[partners, MatchQ[_SparseArray]] && MatchQ[values, _SparseArray], Normal[values],
-        True, values
+    (* The container is the one the kernel's own arithmetic gives: an
+       all-SparseArray set contracts to a SparseArray and an all-dense one to a
+       dense array, and a mixed set follows Times where nothing is summed - a
+       zero of the sparse operand is a zero of every product it is in - and Dot
+       where something is. *)
+    values = With[{sparse = MatchQ[#, _SparseArray] & /@ partners},
+        Which[
+            partners === {}, values,
+            ListQ[values] && (And @@ sparse || Or @@ sparse && SubsetQ[outClasses, covered]), SparseArray[values],
+            MatchQ[values, _SparseArray] && ! (And @@ sparse || Or @@ sparse && SubsetQ[outClasses, covered]), Normal[values],
+            True, values
+        ]
     ];
     If[groups === {}, values, deltaEmbed[values, slotOf, dims[[free]]]]
 ]
 
 contractJoin[arrays_, c_] := With[{r = deltaContract[arrays, c]}, r /; ! MissingQ[r]]
+
+contractJoin[arrays_, c_] := contractJoin[Replace[arrays, a_ ? inactiveDeltaQ :> activeDelta[a], {1}], c] /;
+    AnyTrue[arrays, inactiveDeltaQ]
 
 (* An operand with a dimension of 0 empties the whole contraction whatever the
    other operands are.  The short-circuit is taken HERE and not on the generic
@@ -525,12 +576,26 @@ contractJoin[arrays_, c_] := {} /; AnyTrue[arrays, ZeroArrayQ]
    registered head, so the several-lazy clause below matches on the tier, finds
    no lazy container to expand and re-emits the very call it was given - which,
    with the node as the entry point, is itself.  Materializing it here settles
-   both, one pass before any tier clause runs. *)
+   both, one pass before any tier clause runs.
+
+   A DELTA is materialized here only in a set that has no lazy or symbolic
+   operand, where the delta route has already declined it.  Beside a lazy
+   operand it is kept, because the rebuild below hands the delta route the
+   explicit set it was waiting for, the lazy operand's value grid in its place;
+   beside a symbolic one it is kept because the whole set stays inert in its
+   node.  Expanding it either way would build the dense array the delta route
+   exists to avoid. *)
 
 nativelyContractibleQ[a_] := ArrayQ[a] || (! ArrayExplicitQ[a] && ! deferredTreeQ[a])
 
-contractJoin[arrays_, c_] := contractJoin[Replace[arrays, a_ /; ! nativelyContractibleQ[a] :> ArrayMaterialize[a], {1}], c] /;
-    ! AllTrue[arrays, nativelyContractibleQ]
+nativeOperandQ[a_, keepDeltas_] := nativelyContractibleQ[a] || (TrueQ[keepDeltas] && deltaOperandQ[a])
+
+deltaKeepingQ[arrays_List] := AnyTrue[arrays, deltaOperandQ] && AnyTrue[arrays, lazyContainerQ[#] || ArraySymbolicQ[#] &]
+
+contractJoin[arrays_, c_] := With[{keep = deltaKeepingQ[arrays]},
+    contractJoin[Replace[arrays, a_ /; ! nativeOperandQ[a, keep] :> ArrayMaterialize[a], {1}], c] /;
+        ! AllTrue[arrays, nativeOperandQ[#, keep] &]
+]
 
 (* The tier is read over the CONTAINER operands only.  A node may carry a bare
    scalar factor - a scale is an operand of rank 0 - and arrayTierJoin answers
@@ -592,10 +657,34 @@ contractJoin[arrays_, c_] := ArrayContract[Inactive[TensorProduct] @@ expandedOp
 (* A symbolic operand makes the whole node a symbolic container, and the node it
    already is IS the answer: TensorContract leaves a node carrying a symbol
    inert, and SimplifyArray takes off the wrappers that an empty pair list or a
-   one-operand node leaves behind. *)
+   one-operand node leaves behind.
+
+   A node carrying a DELTA, or a group that is not a pair - a one-slot sum, a
+   hyperedge - is written with the inactive contraction instead.  The active
+   TensorContract is inert only while a symbol stands in it: give the symbols
+   values and it contracts at once, by its own rule, which reads a delta as a
+   scalar factor of the product and declines a group that is not a pair.  Held
+   inactive, the node waits for ArrayMaterialize, which contracts it here. *)
+
+contractJoin[arrays_, c_] := Inactive[TensorContract][Inactive[TensorProduct] @@ arrays, c] /;
+    operandTierJoin[arrays] === "Symbolic" && (AnyTrue[arrays, deltaOperandQ] || ! MatchQ[c, {{_, _} ...}])
 
 contractJoin[arrays_, c_] := SimplifyArray[TensorContract[Inactive[TensorProduct] @@ arrays, c]] /;
     operandTierJoin[arrays] === "Symbolic"
+
+(* A BARE SCALAR among explicit operands is a factor, and it is multiplied in
+   after the rest is contracted rather than carried into the product: it has no
+   slot, so the contraction of the rest is the same specification, and the
+   product of a packed array with a number stays packed where the activated
+   tensor product of the two comes back unpacked.  A lazy or symbolic set has
+   kept its scalars in the node above, where they are part of what stays inert. *)
+
+bareScalarQ[a_] := ! ArrayContainerQ[a] && ArrayRank[a] === 0
+
+contractJoin[arrays_, c_] := With[{scalars = Select[arrays, bareScalarQ]},
+    (Times @@ scalars) contractJoin[Select[arrays, ! bareScalarQ[#] &], c] /;
+        scalars =!= {} && Length[scalars] < Length[arrays] && contractSlotsQ[arrays, c]
+]
 
 (* A ONE-OPERAND node has no product to keep out of, which is the whole reason
    the wrapper is worth carrying, so the operand is contracted bare.  Wrapping
@@ -676,6 +765,8 @@ ArrayContract[a_ ? lazyContainerQ, c_] := contractJoin[{a}, c]
 (* A bare delta contracts by identifying indices, as it does as an operand of a
    node, and so never reaches the materializing clause below. *)
 ArrayContract[d_ ? deltaOperandQ, c_] := With[{r = deltaContract[{d}, c]}, r /; ! MissingQ[r]]
+
+ArrayContract[d_ ? inactiveDeltaQ, c_] := ArrayContract[activeDelta[d], c]
 
 (* TensorContract does not evaluate on the heads that are not ArrayQ, so they
    contract their materialized data instead of returning an inert wrapper.  This

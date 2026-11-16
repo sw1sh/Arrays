@@ -363,10 +363,11 @@ VerificationTest[
     TestID -> "indexcontract-66-merge-order-is-independent-of-operand-order"
 ]
 
-(* The plan writes the batch index as an INACTIVE delta after the operands: the
-   evaluator unpacks a packed array beside an active one, and ArrayContract
-   takes the inactive delta as the one it activates to.  No broadcast and no
-   elementwise multiply is emitted. *)
+(* The plan writes the batch index as an INACTIVE delta before the operands:
+   the evaluator unpacks a packed array beside an active one, and ArrayContract
+   takes the inactive delta as the one it activates to.  The delta's free slot
+   leads the result, so a batch product comes out in its own layout with no
+   transpose, and no broadcast and no elementwise multiply is emitted. *)
 VerificationTest[
     With[{plan = ArrayIndexPlan["bij,bjk->bik", {{2, 2, 3}, {2, 3, 4}}]},
         {
@@ -375,14 +376,11 @@ VerificationTest[
         }
     ],
     {
-        Function[ArrayTranspose[
-            ArrayContract[
-                Inactive[TensorProduct][#1, #2, Inactive[SymbolicDeltaProductArray][{2, 2, 2}, {{1, 2, 3}}]],
-                {{3, 5}, {1, 7}, {4, 8}}
-            ],
-            {2, 3, 1}
+        Function[ArrayContract[
+            Inactive[TensorProduct][Inactive[SymbolicDeltaProductArray][{2, 2, 2}, {{1, 2, 3}}], #1, #2],
+            {{1, 4}, {2, 7}, {6, 8}}
         ]],
-        {"Contract", "Transpose"}
+        {"Contract"}
     },
     TestID -> "indexcontract-batch-index-is-an-inactive-delta"
 ]
@@ -679,6 +677,168 @@ VerificationTest[
 EndTestSection[]
 
 
+BeginTestSection["indexcontract - einsum compatibility options"]
+
+(* The divergences above are the defaults, and two options turn the first two
+   into EinsteinSummation's own readings, which is what lets EinsteinSummation
+   be a thin wrapper.  Every expected value is the one EinsteinSummation with
+   ActivateTensors gives for the same call, its GeneralizedPower written out as
+   the tensor product of its copies. *)
+
+(* "DimensionMismatch" -> "Pad" is IndexedMultiply's rule: an axis takes the
+   largest size an operand gives it, an extent of 1 is repeated, and any other
+   shorter extent is padded at the end with 1s, the surplus passing through. *)
+VerificationTest[
+    {
+        ArrayIndexContract[{{i, j}, {j}} :> {{i, j}}, {$a, {10, 20, 30, 40}}, "DimensionMismatch" -> "Pad"],
+        ArrayIndexContract[{{i, j}, {i, j}} :> {{i, j}}, {$m, {{10, 20, 30}, {40, 50, 60}, {70, 80, 90}}}, "DimensionMismatch" -> "Pad"],
+        ArrayIndexContract[{{j}, {j}} :> {{j}}, {{1, 2}, {10, 20, 30}}, "DimensionMismatch" -> "Pad"],
+        ArrayIndexContract["i,i->i", {{5}, {3, 4, 5}}, "DimensionMismatch" -> "Pad"],
+        ArrayIndexContract["ij,ij->i", {$m, {{1, 2, 3}, {4, 5, 6}}}, "DimensionMismatch" -> "Pad"]
+    },
+    {
+        {{10, 40, 90, 40}, {40, 100, 180, 40}},
+        {{10, 40, 30}, {120, 200, 60}, {70, 80, 90}},
+        {10, 40, 30},
+        {15, 20, 25},
+        {8, 38}
+    },
+    TestID -> "indexcontract-padding-is-indexedmultiplys-rule"
+]
+
+(* The padding is a step of its own in the plan, a PadArray, which keeps a
+   symbolic operand inert. *)
+VerificationTest[
+    With[{plan = ArrayIndexPlan["i,i->i", {{2}, {3}}, "DimensionMismatch" -> "Pad"]},
+        {
+            Map[#["Step"] &, plan["Steps"]],
+            ArrayDimensions[ArrayIndexContract["i,i->i", {VectorSymbol["v", 2], {3, 4, 5}}, "DimensionMismatch" -> "Pad"]]
+        }
+    ],
+    {{"Pad", "Contract"}, {3}},
+    TestID -> "indexcontract-padding-is-a-step-and-keeps-the-tier"
+]
+
+(* "IndexMultiplicity" -> True reads a repeated output axis as a tensor power of
+   the contraction with each output axis once: the r-th occurrence of an axis
+   from the r-th copy, and an axis's slots in the copies past its own count
+   summed together. *)
+VerificationTest[
+    {
+        ArrayIndexContract[{{i}} :> {{i, i}}, {{1, 2, 3}}, "IndexMultiplicity" -> True],
+        ArrayIndexContract[{{i, j}} :> {{i, j, i, j}}, {$m}, "IndexMultiplicity" -> True],
+        ArrayIndexContract[{{i, j}, {j}} :> {{i, i}}, {$m, {1, 1}}, "IndexMultiplicity" -> True],
+        ArrayIndexContract[{{i}} :> {{i, i, i}}, {{1, 2}}, "IndexMultiplicity" -> True],
+        ArrayIndexContract[{{i, j}} :> {{i, i, i, j}}, {$m}, "IndexMultiplicity" -> True],
+        ArrayIndexContract[{{i, j}} :> {{i, i, j, j}}, {$m}, "IndexMultiplicity" -> True],
+        ArrayIndexContract["i,i->ii", {{1, 2}, {3, 4}}, "IndexMultiplicity" -> True]
+    },
+    {
+        {{1, 2, 3}, {2, 4, 6}, {3, 6, 9}},
+        {{{{1, 2}, {3, 4}}, {{2, 4}, {6, 8}}}, {{{3, 6}, {9, 12}}, {{4, 8}, {12, 16}}}},
+        {{9, 21}, {21, 49}},
+        {{{1, 2}, {2, 4}}, {{2, 4}, {4, 8}}},
+        {{{{5, 10}, {11, 22}}, {{11, 22}, {25, 50}}}, {{{15, 20}, {33, 44}}, {{33, 44}, {75, 100}}}},
+        {{{{1, 2}, {2, 4}}, {{3, 4}, {6, 8}}}, {{{3, 6}, {4, 8}}, {{9, 12}, {12, 16}}}},
+        {{9, 24}, {24, 64}}
+    },
+    TestID -> "indexcontract-multiplicity-is-einsteinsummations-tensor-power"
+]
+
+(* The power keeps the tier: over a symbolic vector it is the inert product of
+   two copies, of the squared dimensions. *)
+VerificationTest[
+    With[{power = ArrayIndexContract["i->ii", {VectorSymbol["v", 3]}, "IndexMultiplicity" -> True]},
+        {ArraySymbolicQ[power], ArrayDimensions[power]}
+    ],
+    {True, {3, 3}},
+    TestID -> "indexcontract-multiplicity-keeps-the-tier"
+]
+
+(* What the option does not reach: an axis repeated inside an output composite
+   has no copy to read, and an axis repeated within one operand and kept is the
+   diagonal still, where EinsteinSummation keeps the two occurrences as two
+   axes. *)
+VerificationTest[
+    {
+        Head[ArrayIndexContract["i -> (i i)", {{1, 2}}, "IndexMultiplicity" -> True]],
+        Head[ArrayIndexContract[{{i, i}} :> {{i, i}}, {$m}, "IndexMultiplicity" -> True]]
+    },
+    {ArrayIndexContract, ArrayIndexContract},
+    {ArrayIndexPattern::duplicate, ArrayIndexPlan::diagonal},
+    TestID -> "indexcontract-multiplicity-leaves-composites-and-diagonals-declined"
+]
+
+(* Both settings are compiled into the descriptor, so a prepared object carries
+   them and is declined them, as it is "Targeting". *)
+VerificationTest[
+    With[{pattern = ArrayIndexPattern["i->ii", "IndexMultiplicity" -> True]},
+        {
+            ArrayIndexContract[pattern, {{1, 2}}],
+            Head[ArrayIndexContract[pattern, {{1, 2}}, "DimensionMismatch" -> "Pad"]]
+        }
+    ],
+    {{{1, 2}, {2, 4}}, ArrayIndexContract},
+    {ArrayIndexPattern::prepared},
+    TestID -> "indexcontract-compatibility-options-travel-with-a-prepared-object"
+]
+
+(* "Inactive" -> True gives the plan's tree unevaluated, in the heads the
+   paclet's structural vocabulary shapes: every node has the result's
+   dimensions, a rank-0 result included, and ArrayMaterialize computes the eager
+   result, activating the contractions before the products they contract.  A
+   plain Activate does as well where the tree holds no delta; over a batch index
+   it builds the product first and reads the delta in it as a scalar. *)
+VerificationTest[
+    Module[{check},
+        check[desc_, ops_, opts___] := With[{tree = ArrayIndexContract[desc, ops, "Inactive" -> True, opts], eager = ArrayIndexContract[desc, ops, opts]},
+            {
+                ArrayDimensions[tree] === Dimensions[eager],
+                ArrayMaterialize[tree] === eager,
+                ! FreeQ[tree, SymbolicDeltaProductArray] || Activate[tree] === eager
+            }
+        ];
+        Union @ Flatten @ {
+            check["ij,jk->ik", {$a, $b}],
+            check["bij,bjk->bik", {$batchA, $batchB}],
+            check["ij,ij->", {$m, $m}],
+            check["ii->", {$m}],
+            check["ij,->ij", {$m, 3}],
+            check["ib,jb,kb->ijkb", {$m, $m, $m}],
+            check["i->ii", {{1, 2}}, "IndexMultiplicity" -> True],
+            check["i,i->i", {{1, 2}, {3, 4, 5}}, "DimensionMismatch" -> "Pad"]
+        }
+    ],
+    {True},
+    TestID -> "indexcontract-inactive-tree-has-the-shape-and-the-value"
+]
+
+VerificationTest[
+    ArrayIndexContract["bij,bjk->bik", {$batchA, $batchB}, "Inactive" -> True],
+    Inactive[ArrayContract][
+        Inactive[TensorProduct][SymbolicDeltaProductArray[{2, 2, 2}, {{1, 2, 3}}], $batchA, $batchB],
+        {{1, 4}, {2, 7}, {6, 8}}
+    ],
+    TestID -> "indexcontract-inactive-tree-heads"
+]
+
+(* An inactive tree over a symbolic operand is a symbolic container, and over a
+   deferred tree it nests that tree as a leaf rather than computing it. *)
+VerificationTest[
+    With[{deferred = Inactive[TensorContract][Inactive[TensorProduct][$m, $m], {{2, 3}}]},
+        {
+            ArraySymbolicQ[ArrayIndexContract["ij,jk->ik", {$symA, $symB}, "Inactive" -> True]],
+            FreeQ[ArrayIndexContract["ij,jk->ik", {deferred, $m}, "Inactive" -> True], deferred],
+            ArrayMaterialize[ArrayIndexContract["ij,jk->ik", {deferred, $m}, "Inactive" -> True]]
+        }
+    ],
+    {True, False, $m . $m . $m},
+    TestID -> "indexcontract-inactive-tree-keeps-symbols-and-deferred-trees"
+]
+
+EndTestSection[]
+
+
 (* A contraction that consumes every slot of some operands leaves those operands
    as a rank-0 factor of the residual tensor product, and TensorProduct[x, 0] is
    0 whatever the rank of x.  A scalar factor scales, so the free operands keep
@@ -959,6 +1119,165 @@ VerificationTest[
     },
     {{1, 4, 9}, {1, 4, 9}, {{7, 10}, {15, 22}}, {{7, 10}, {15, 22}}},
     TestID -> "indexcontract-the-remaining-wrappers-materialize"
+]
+
+(* What a caller contracting a network of arrays relies on, over every kind of
+   step a descriptor emits - a summed index, an elementwise product, a scaling,
+   a batch index, an outer product, a transpose and a sum over one axis.
+
+   An all-SparseArray set contracts to a SparseArray, exact entries stay exact
+   and the background stays an exact 0. *)
+VerificationTest[
+    With[{s = SparseArray[{{1, 0, 2}, {0, 3, 0}}], t = SparseArray[{{0, 1}, {4, 0}, {0, 5}}],
+          s2 = SparseArray[{{0, 2, 1}, {5, 0, 0}}], v = SparseArray[{1, 0, 3}],
+          s3 = SparseArray[{{{1, 0}, {0, 2}}, {{0, 3}, {4, 0}}}], t3 = SparseArray[{{{0, 1}, {1, 0}}, {{2, 0}, {0, 0}}}]},
+        Map[
+            Function[result, {Head[result], result["Background"], Normal[result]}],
+            {
+                ArrayIndexContract["ij,jk->ik", {s, t}],
+                ArrayIndexContract["ij,ij->ij", {s, s2}],
+                ArrayIndexContract["ij,j->ij", {s, v}],
+                ArrayIndexContract["bij,bjk->bik", {s3, t3}],
+                ArrayIndexContract["i,j->ij", {v, SparseArray[{0, 3}]}],
+                ArrayIndexContract["ij->ji", {s}],
+                ArrayIndexContract["ij->i", {s}]
+            }
+        ]
+    ],
+    {
+        {SparseArray, 0, {{0, 11}, {12, 0}}},
+        {SparseArray, 0, {{0, 0, 2}, {0, 0, 0}}},
+        {SparseArray, 0, {{1, 0, 6}, {0, 0, 0}}},
+        {SparseArray, 0, {{{0, 1}, {2, 0}}, {{0, 0}, {8, 0}}}},
+        {SparseArray, 0, {{0, 3}, {0, 0}, {0, 9}}},
+        {SparseArray, 0, {{1, 0}, {0, 3}, {2, 0}}},
+        {SparseArray, 0, {3, 3}}
+    },
+    TestID -> "indexcontract-exact-sparse-operands-stay-sparse-and-exact"
+]
+
+(* A set of packed arrays contracts to a packed array, Real and Integer alike; a
+   batch product comes back packed where MapThread[Dot] gives an unpacked list
+   of packed blocks. *)
+VerificationTest[
+    With[{a = Developer`ToPackedArray[N[$a]], b = Developer`ToPackedArray[N[$b]], v = Developer`ToPackedArray[N[{1, 2, 3}]],
+          a3 = Developer`ToPackedArray[N[$batchA]], b3 = Developer`ToPackedArray[N[$batchB]],
+          ai = Developer`ToPackedArray[$a], bi = Developer`ToPackedArray[$b],
+          a3i = Developer`ToPackedArray[$batchA], b3i = Developer`ToPackedArray[$batchB]},
+        Map[
+            Apply[Function[{result, reference}, {Developer`PackedArrayQ[result], result == reference}]],
+            {
+                {ArrayIndexContract["ij,jk->ik", {a, b}], a . b},
+                {ArrayIndexContract["ij,ij->ij", {a, a}], a a},
+                {ArrayIndexContract["ij,j->ij", {a, v}], a {v, v}},
+                {ArrayIndexContract["ij,j->i", {a, v}], a . v},
+                {ArrayIndexContract["bij,bjk->bik", {a3, b3}], MapThread[Dot, {a3, b3}]},
+                {ArrayIndexContract["i,j->ij", {v, v}], Outer[Times, v, v]},
+                {ArrayIndexContract["ij->ji", {a}], Transpose[a]},
+                {ArrayIndexContract["ij->i", {a}], Total[a, {2}]},
+                {ArrayIndexContract[{{}, {i, j}}, {2, a}], 2 a},
+                {ArrayIndexContract["ij,jk->ik", {ai, bi}], ai . bi},
+                {ArrayIndexContract["bij,bjk->bik", {a3i, b3i}], MapThread[Dot, {a3i, b3i}]},
+                {ArrayIndexContract["ij,ij->ij", {ai, ai}], ai ai}
+            }
+        ]
+    ],
+    ConstantArray[{True, True}, 12],
+    TestID -> "indexcontract-packed-operands-stay-packed-over-every-step"
+]
+
+(* Integers past machine size and rationals stay exact. *)
+VerificationTest[
+    With[{a = {{10^30, 1}, {2, 10^25}}, b = {{3, 10^20}, {10^18, 5}}, r = {{1/3, 2/7}, {5/11, 1/13}}},
+        {
+            ArrayIndexContract["ij,jk->ik", {a, b}] === a . b,
+            ArrayIndexContract["bij,bjk->bik", {{a, b}, {b, a}}] === {a . b, b . a},
+            ArrayIndexContract["ij,ij->ij", {a, b}] === a b,
+            ArrayIndexContract["ij,j->ij", {a, {10^40, 7}}] === a {{10^40, 7}, {10^40, 7}},
+            ArrayIndexContract["ii->", {a}] === Tr[a],
+            ArrayIndexContract["ij,jk->ik", {r, a}] === r . a,
+            ArrayIndexContract["bij,bjk->bik", {{r, r}, {a, b}}] === {r . a, r . b},
+            ArrayIndexContract[{{}, {i, j}}, {10^30, r}] === 10^30 r
+        }
+    ],
+    ConstantArray[True, 8],
+    TestID -> "indexcontract-big-integers-and-rationals-stay-exact"
+]
+
+(* Symbolic entries are arithmetic like any other: an explicit array of
+   expressions contracts to the expressions the kernel's own products give,
+   a sparse one staying sparse. *)
+VerificationTest[
+    With[{x = Array[xe, {2, 2}], y = Array[ye, {2, 2}], x3 = Array[xe, {2, 2, 2}], y3 = Array[ye, {2, 2, 2}],
+          v = {ve[1], ve[2]}, sx = SparseArray[{{xe[1], 0}, {0, xe[2]}}]},
+        {
+            Union[Flatten[Expand[{
+                ArrayIndexContract["ij,jk->ik", {x, y}] - x . y,
+                ArrayIndexContract["bij,bjk->bik", {x3, y3}] - MapThread[Dot, {x3, y3}],
+                ArrayIndexContract["ij,ij->ij", {x, y}] - x y,
+                ArrayIndexContract["ij,j->ij", {x, v}] - x {v, v},
+                ArrayIndexContract["ii->", {x}] - Tr[x],
+                ArrayIndexContract[{{}, {i, j}}, {se, x}] - se x,
+                ArrayIndexContract[{{}, {i}, {i}} :> {{}}, {se, {1, 2}, v}] - se (ve[1] + 2 ve[2])
+            }]]],
+            With[{result = ArrayIndexContract["ij,jk->ik", {sx, sx}]}, {Head[result], Normal[result]}]
+        }
+    ],
+    {{0}, {SparseArray, {{xe[1]^2, 0}, {0, xe[2]^2}}}},
+    TestID -> "indexcontract-symbolic-entries-contract-as-expressions"
+]
+
+(* A rank-0 operand is a factor of the contraction, exact, sparse and packed
+   companions keeping their containers, and a rank-0 result is a number rather
+   than an array of rank 0. *)
+VerificationTest[
+    {
+        ArrayIndexContract[{{}, {i}, {i}} :> {{}}, {2, {1, 2}, {3, 4}}],
+        ArrayIndexContract[{{}, {}}, {1/2, 6}],
+        With[{result = ArrayIndexContract[{{}, {i, j}}, {1/2, SparseArray[{{2, 0}, {0, 4}}]}]}, {Head[result], Normal[result]}],
+        With[{result = ArrayIndexContract[{{}, {i, j}, {j, k}} :> {{i, k}}, {3, SparseArray[{{1, 0}, {0, 2}}], SparseArray[{{0, 1}, {1, 0}}]}]},
+            {Head[result], Normal[result]}
+        ],
+        ArrayIndexContract[{{}, {b, i}, {b, i}} :> {{b, i}}, {2, {{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}],
+        With[{result = ArrayIndexContract["ij,ij->", {Developer`ToPackedArray[N[$m]], Developer`ToPackedArray[N[$m]]}]}, {Head[result], result}]
+    },
+    {
+        22,
+        3,
+        {SparseArray, {{1, 0}, {0, 2}}},
+        {SparseArray, {{0, 3}, {6, 0}}},
+        {{10, 24}, {42, 64}},
+        {Real, 30.}
+    },
+    TestID -> "indexcontract-rank-0-operands-are-factors"
+]
+
+(* A set that mixes SparseArray and dense operands comes back in the container
+   the kernel's own arithmetic gives the same operands, neither densified nor
+   sparsified beyond it: a summed index follows Dot, an elementwise product or a
+   scaling follows Times, and an outer product follows TensorProduct, which
+   keeps the container of its first factor. *)
+VerificationTest[
+    With[{s = SparseArray[{{1, 0, 2}, {0, 3, 0}}], d = {{1, 2}, {3, 4}, {5, 6}}, dv = {7, 8, 9}, sv = SparseArray[{1, 0, 3}],
+          s3 = SparseArray[{{{1, 0}, {0, 2}}, {{0, 3}, {4, 0}}}], d3 = {{{1, 1}, {2, 2}}, {{3, 3}, {4, 4}}}},
+        Map[
+            Apply[Function[{result, reference}, {Head[result] === Head[reference], Normal[result] === Normal[reference]}]],
+            {
+                {ArrayIndexContract["ij,jk->ik", {s, d}], s . d},
+                {ArrayIndexContract["ij,jk->ik", {Transpose[d], Transpose[s]}], Transpose[d] . Transpose[s]},
+                {ArrayIndexContract["ij,j->i", {s, dv}], s . dv},
+                {ArrayIndexContract["bij,bjk->bik", {s3, d3}], MapThread[Dot, {Normal[s3], d3}]},
+                {ArrayIndexContract["ij,ij->ij", {s, Transpose[d]}], s Transpose[d]},
+                {ArrayIndexContract["ij,ij->ij", {Transpose[d], s}], Transpose[d] s},
+                {ArrayIndexContract["ij,j->ij", {s, dv}], s {dv, dv}},
+                {ArrayIndexContract["bij,bij->bij", {s3, d3}], s3 d3},
+                {ArrayIndexContract["i,j->ij", {sv, {1, 2}}], TensorProduct[sv, {1, 2}]},
+                {ArrayIndexContract["i,j->ij", {{1, 2}, sv}], TensorProduct[{1, 2}, sv]}
+            }
+        ]
+    ],
+    ConstantArray[{True, True}, 10],
+    TestID -> "indexcontract-mixed-containers-follow-the-kernels-arithmetic"
 ]
 
 EndTestSection[]

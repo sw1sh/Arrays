@@ -34,13 +34,14 @@ RelatedTutorials: [IndexNotation]
 | Step | What it does | Primitive |
 |---|---|---|
 | `"Reshape"` | splits composites, squeezes and inserts unit axes | [ReshapeArray]() |
+| `"Pad"` | pads an operand shorter than its axes, under `"DimensionMismatch" -> "Pad"` | [PadArray]() |
 | `"Transpose"` | permutes into the frame the next step reads | [ArrayTranspose]() |
 | `"Broadcast"` | appends an axis of a given extent | [ArrayContract]() of an inactive [TensorProduct]() with a vector of ones over no group |
 | `"Contract"` | sums over slot groups and ties batch indices | [ArrayContract]() over an inactive [TensorProduct]() |
 | `"Multiply"` | multiplies the operands of a descriptor whose operands are all scalars | [Times]() |
 
 - A one-slot group sums that slot, a two-slot group is an ordinary contraction, and a group of three or more is the generalized trace a hyperedge lowers to. The `"Groups"` of a contract step are the *pairs* argument of its [ArrayContract]() call, numbering the concatenated levels of the operands under its inactive [TensorProduct]().
-- An axis the output carries that two or more operands supply is a batch index. A contract step lists one delta per batch index under `"Deltas"`, by its dimensions: one slot tied to each occurrence and one left free to carry the axis to the output, numbered after the operands. The delta is written `Inactive[SymbolicDeltaProductArray]`, which [ArrayContract]() takes as the delta it activates to, since the evaluator unpacks a packed array beside an active one. A rank-0 operand joins the same node as a factor.
+- An axis the output carries that two or more operands supply is a batch index. A contract step lists one delta per batch index under `"Deltas"`, by its dimensions: one slot tied to each occurrence and one left free to carry the axis to the output. The deltas come first in the node, so the batch axes lead the result, which is where a batch product keeps them. The delta is written `Inactive[SymbolicDeltaProductArray]`, which [ArrayContract]() takes as the delta it activates to, since the evaluator unpacks a packed array beside an active one. A rank-0 operand joins the same node as a factor.
 - `"Expression"` is that plan as a [Function]() of the operands, with operand *k* spelled `#k`. It is the function the executors apply, so the trace read here is what runs.
 - Supported properties:
 
@@ -64,10 +65,13 @@ RelatedTutorials: [IndexNotation]
 | Option | Settings |
 |---|---|
 | `"DefaultOutput"` | `"Contracted"` (default) or `"Identity"` |
+| `"DimensionMismatch"` | `"Error"` (default) or `"Pad"` |
+| `"IndexMultiplicity"` | `False` (default) or `True` |
 | `"Targeting"` | `Automatic` (default), `True`, `False` |
 
+- `"DimensionMismatch" -> "Pad"` gives an axis of mismatched sizes the largest, and the plan pads each shorter operand with a `"Pad"` step; `"IndexMultiplicity" -> True` admits a repeated output axis, which the plan reads as a tensor power, a `"Contract"` step over copies of the result so far. [ArrayIndexContract]() states both readings.
 - `"Targeting"` selects which occurrences count as targeted, and [ArrayIndexContract]() states what a target does; `"DefaultOutput"` resolves the output shape of a descriptor that writes none, and [ArrayIndexPattern]() states what each setting keeps. A setting outside what an option takes is declined with an `ArrayIndexPlan::option` message wherever the option is read.
-- Both are read where a descriptor is compiled, as a *bindings* list is, so a prepared [ArrayIndexPattern]() or [ArrayIndexPlan]() in the descriptor position carries what its own construction resolved and is declined all three; [ArrayIndexContract]()'s `"Combiner"` is read at execution and a prepared plan takes it. An option name the symbol does not declare is declined before any setting is read.
+- All four are read where a descriptor is compiled, as a *bindings* list is, so a prepared [ArrayIndexPattern]() or [ArrayIndexPlan]() in the descriptor position carries what its own construction resolved and is declined all three; [ArrayIndexContract]()'s `"Combiner"` is read at execution and a prepared plan takes it. An option name the symbol does not declare is declined before any setting is read.
 
 ## Basic Examples
 
@@ -187,15 +191,15 @@ Column scaling carries `j` on the output from both operands, so `j` is a batch i
 ArrayIndexPlan["ij,j->ij", {{2, 2}, {2}}]["Steps"]
 ```
 
-<!-- => {<|"Step" -> "Contract", "Inputs" -> {1, 2}, "Output" -> 3, "Groups" -> {{2, 4}, {3, 5}}, "Deltas" -> {{2, 2, 2}}, "Frame" -> {1, 2}, "Dimensions" -> {2, 2}|>} -->
+<!-- => {<|"Step" -> "Contract", "Inputs" -> {1, 2}, "Output" -> 3, "Groups" -> {{1, 5}, {2, 6}}, "Deltas" -> {{2, 2, 2}}, "Frame" -> {2, 1}, "Dimensions" -> {2, 2}|>, <|"Step" -> "Transpose", "Inputs" -> {3}, "Output" -> 4, "Permutation" -> {2, 1}, "Frame" -> {1, 2}, "Dimensions" -> {2, 2}|>} -->
 
-The delta is the third operand of the node, written inactive:
+The delta is the first operand of the node, written inactive, and its free leg leads the result, so a transpose puts `j` back last:
 
 ```wl
 ArrayIndexPlan["ij,j->ij", {{2, 2}, {2}}]["Expression"]
 ```
 
-<!-- => ArrayContract[Inactive[TensorProduct][#1, #2, Inactive[SymbolicDeltaProductArray][{2, 2, 2}, {{1, 2, 3}}]], {{2, 4}, {3, 5}}] & -->
+<!-- => ArrayTranspose[ArrayContract[Inactive[TensorProduct][Inactive[SymbolicDeltaProductArray][{2, 2, 2}, {{1, 2, 3}}], #1, #2], {{1, 5}, {2, 6}}], {2, 1}] & -->
 
 ---
 
@@ -235,7 +239,7 @@ An axis every operand carries and the output keeps is one delta tying all three:
 ArrayIndexPlan["i,i,i->i", {{2}, {2}, {2}}]["Expression"]
 ```
 
-<!-- => ArrayContract[Inactive[TensorProduct][#1, #2, #3, Inactive[SymbolicDeltaProductArray][{2, 2, 2, 2}, {{1, 2, 3, 4}}]], {{1, 4}, {2, 5}, {3, 6}}] & -->
+<!-- => ArrayContract[Inactive[TensorProduct][Inactive[SymbolicDeltaProductArray][{2, 2, 2, 2}, {{1, 2, 3, 4}}], #1, #2, #3], {{1, 5}, {2, 6}, {3, 7}}] & -->
 
 ### The compile-once path
 

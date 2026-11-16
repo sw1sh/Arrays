@@ -41,10 +41,16 @@ RelatedTutorials: [IndexNotation]
 |---|---|
 | `"Combiner"` | `{Times, Plus}`, the sum of products a contraction over an inactive [TensorProduct]() expresses |
 | `"DefaultOutput"` | `"Contracted"` (default) or `"Identity"` |
+| `"DimensionMismatch"` | `"Error"` (default) or `"Pad"` |
+| `"Inactive"` | `False` (default) or `True` |
+| `"IndexMultiplicity"` | `False` (default) or `True` |
 | `"Targeting"` | `Automatic` (default), `True`, `False` |
 
+- With `"DimensionMismatch" -> "Pad"` an axis the operands give different sizes takes the largest, and a shorter operand is padded to it by `IndexedMultiply`'s rule: an extent of 1 is repeated, and any other extent is padded at the end with 1s. A literal size still has to match.
+- With `"IndexMultiplicity" -> True` an output shape may name an axis more than once, and the result is the tensor power `EinsteinSummation` reads there: the contraction with each output axis once, in as many copies as the most-repeated axis has occurrences, the *r*-th occurrence of an axis read from the *r*-th copy, and an axis's levels in the copies past its own count summed together. An axis repeated inside an output composite, and one repeated within one input shape and kept, are declined still.
+- With `"Inactive" -> True` the result is the plan's tree unevaluated: [Inactive]()[[ArrayContract]()] over an [Inactive]()[[TensorProduct]()] of the operands, a batch index's delta among them, with [Inactive]()[[Transpose]](), [Inactive]()[[ArrayReshape]]() and, for a repeated axis, an [Inactive]()[[TensorProduct]]() with vectors of ones above it. Every node has the dimensions of what it stands for, a rank-0 result included, and [ArrayMaterialize]() computes the tree, contracting before it builds any product. A deferred tree among the operands stays a leaf of it.
 - With `"Targeting" -> Automatic` an explicit target marks a contracted axis exactly; with `True` every contracted axis carries a target; with `False` target wrappers are ignored and a repeated name alone contracts, which is the classic einsum reading.
-- `"Combiner"` is read at execution, so a prepared [ArrayIndexPlan]() takes it as a descriptor does. `"Targeting"`, `"DefaultOutput"` and a *bindings* list are read where a descriptor is compiled, so a prepared object carries what its own construction resolved and is declined all three; [ArrayIndexPlan]() owns that rule. An option name `ArrayIndexContract` does not declare is declined before any setting is read.
+- `"Combiner"` and `"Inactive"` are read at execution, so a prepared [ArrayIndexPlan]() takes them as a descriptor does. `"Targeting"`, `"DefaultOutput"`, `"DimensionMismatch"`, `"IndexMultiplicity"` and a *bindings* list are read where a descriptor is compiled, so a prepared object carries what its own construction resolved and is declined them; [ArrayIndexPlan]() owns that rule. An option name `ArrayIndexContract` does not declare is declined before any setting is read.
 
 ## Basic Examples
 
@@ -205,7 +211,7 @@ A batch index over symbolic operands is a delta among the operands of the inert 
 ArrayIndexContract["bij,bjk->bik", {ArraySymbol["A", {2, 2, 3}], ArraySymbol["B", {2, 3, 4}]}]
 ```
 
-<!-- => Transpose[Inactive[TensorContract][Inactive[TensorProduct][ArraySymbol["A", {2, 2, 3}], ArraySymbol["B", {2, 3, 4}], SymbolicDeltaProductArray[{2, 2, 2}, {{1, 2, 3}}]], {{3, 5}, {1, 7}, {4, 8}}], {2, 3, 1}] -->
+<!-- => Inactive[TensorContract][Inactive[TensorProduct][SymbolicDeltaProductArray[{2, 2, 2}, {{1, 2, 3}}], ArraySymbol["A", {2, 2, 3}], ArraySymbol["B", {2, 3, 4}]], {{1, 4}, {2, 7}, {6, 8}}] -->
 
 ---
 
@@ -330,6 +336,52 @@ ArrayIndexContract["i,i->", {ByteArray[{1, 2}], {3, 4}}]
 <!-- => 11 -->
 
 ### Options
+
+With `"DimensionMismatch" -> "Pad"` a shared axis of mismatched size takes the larger size, the shorter operand padded with 1s:
+
+```wl
+ArrayIndexContract["i,i->i", {{1, 2}, {3, 4, 5}}, "DimensionMismatch" -> "Pad"]
+```
+
+<!-- => {3, 8, 5} -->
+
+---
+
+With `"IndexMultiplicity" -> True` a repeated output axis is a tensor power, here the outer square of a vector:
+
+```wl
+ArrayIndexContract["i->ii", {{1, 2, 3}}, "IndexMultiplicity" -> True]
+```
+
+<!-- => {{1, 2, 3}, {2, 4, 6}, {3, 6, 9}} -->
+
+---
+
+With `"Inactive" -> True` the contraction is returned unevaluated, as a tree of the result's shape:
+
+```wl
+tree = ArrayIndexContract["bij,bjk->bik", {{{{1, 2}, {3, 4}}}, {{{5, 6}, {7, 8}}}}, "Inactive" -> True]
+```
+
+<!-- => Inactive[ArrayContract][Inactive[TensorProduct][SymbolicDeltaProductArray[{1, 1, 1}, {{1, 2, 3}}], {{{1, 2}, {3, 4}}}, {{{5, 6}, {7, 8}}}], {{1, 4}, {2, 7}, {6, 8}}] -->
+
+[ArrayDimensions]() reads the shape off the tree:
+
+```wl
+ArrayDimensions[tree]
+```
+
+<!-- => {1, 2, 2} -->
+
+[ArrayMaterialize]() computes it:
+
+```wl
+ArrayMaterialize[tree]
+```
+
+<!-- => {{{19, 22}, {43, 50}}} -->
+
+---
 
 With `"Targeting" -> Automatic`, the default, the targets mark the contracted axis exactly:
 

@@ -772,7 +772,7 @@ indexAxisInfo[term_, key_, id_Integer, path_List] :=
     }]
 
 
-indexNormalizedDescriptor[surface_Association, bindings_List, defaultOutput_String] :=
+indexNormalizedDescriptor[surface_Association, bindings_List, defaultOutput_String, settings_Association : <||>] :=
     Module[{
             inputs = surface["Inputs"], outputs = surface["Outputs"], sourceMap = surface["SourceMap"],
             established, leaves, keyTable = <||>, axisTable = <||>, literalSizes = <||>, idAt = <||>,
@@ -821,11 +821,17 @@ indexNormalizedDescriptor[surface_Association, bindings_List, defaultOutput_Stri
                 indexDefaultOutput[normalizedInputs, axisTable, defaultOutput, surface]
             ];
 
-        (* A repeated output axis names no layout: the tensor power reading of
-           {{i}} :> {{i, i}} is a surprising one and has no lowering here. *)
+        (* A repeated output axis names no layout of its own: {{i}} :> {{i, i}}
+           reads as a tensor power, a surprising reading, so it is declined
+           unless "IndexMultiplicity" -> True asks for it.  Even then an axis
+           repeated inside an output composite is declined, since the merge of a
+           composite reads one dimension per factor and a copy has none to give. *)
         outIds = indexShapeAxisIds[outputShape];
         repeated = FirstCase[Tally[outIds], {axis_, n_} /; n > 1 :> axis];
-        If[ ! MissingQ[repeated],
+        If[ ! MissingQ[repeated] && (
+                ! TrueQ[Lookup[settings, "IndexMultiplicity", False]] ||
+                MemberQ[Catenate[Cases[outputShape, product_indexProduct :> indexShapeAxisIds[{product}]]], repeated]
+            ),
             indexFail[ArrayIndexPattern, "duplicate", {axisTable[repeated, "Name"]}, <|"Axis" -> repeated|>]
         ];
 
@@ -868,7 +874,8 @@ indexNormalizedDescriptor[surface_Association, bindings_List, defaultOutput_Stri
             "Bindings" -> facts,
             "Constraints" -> constraints,
             "SourceMap" -> sourceMap,
-            "Dialect" -> surface["Dialect"]
+            "Dialect" -> surface["Dialect"],
+            "DimensionMismatch" -> Lookup[settings, "DimensionMismatch", "Error"]
         |>
     ]
 

@@ -65,20 +65,40 @@ indexOnesExpression[n_Integer] := Hold[ConstantArray[1, n]]
    contracted axis, and a contraction with nothing to sum is their outer
    product, which is the array the step stands for.
 
-   A batch index is a delta among the operands, after them in the node, and it
+   A batch index is a delta among the operands, before them in the node, and it
    is written INACTIVE: the evaluator unpacks every packed array beside an
    active SymbolicDeltaProductArray, at about the cost of reading the array, and
    ArrayContract takes the inactive delta as the one it activates to. *)
 
-indexDeltaExpression[dims_List] := With[{d = dims, groups = {Range[Length[dims]]}},
-    Hold[Inactive[SymbolicDeltaProductArray][d, groups]]
+indexDeltaExpression[dims_List, inactive_] := With[{d = dims, groups = {Range[Length[dims]]}},
+    If[inactive, Hold[SymbolicDeltaProductArray[d, groups]], Hold[Inactive[SymbolicDeltaProductArray][d, groups]]]
 ]
 
-indexStepExpression[step : KeyValuePattern["Step" -> "Reshape"], {in_Hold}] :=
-    indexHoldApply[ReshapeArray, {in, indexHeldValue[step["Dimensions"]]}]
+indexStepExpression[step : KeyValuePattern["Step" -> "Reshape"], {in_Hold}, inactive_] :=
+    indexHoldApply[If[inactive, Inactive[ArrayReshape], ReshapeArray], {in, indexHeldValue[step["Dimensions"]]}]
 
-indexStepExpression[step : KeyValuePattern["Step" -> "Transpose"], {in_Hold}] :=
-    indexHoldApply[ArrayTranspose, {in, indexHeldValue[step["Permutation"]]}]
+(* A pad brings an operand shorter than its axes, which "DimensionMismatch" ->
+   "Pad" admits, up to them by IndexedMultiply's rule: an extent of 1 is
+   repeated, which is PadArray with "Fixed", and any other extent is padded at
+   the end with 1s.  It is data made ready rather than a contraction, so it is
+   PadArray in either rendering: an explicit operand is padded where the step
+   stands, and a symbolic one takes the unevaluated PadArray that ArrayDimensions
+   reads. *)
+indexStepExpression[step : KeyValuePattern["Step" -> "Pad"], {in_Hold}, _] :=
+    Module[{held = in, repeat, ones},
+        repeat = MapThread[If[#2, #1, {0, 0}] &, {step["Padding"], step["Repeat"]}];
+        ones = MapThread[If[#2, {0, 0}, #1] &, {step["Padding"], step["Repeat"]}];
+        If[ AnyTrue[repeat, # =!= {0, 0} &],
+            held = indexHoldApply[PadArray, {held, indexHeldValue[repeat], indexHeldValue["Fixed"]}]
+        ];
+        If[ AnyTrue[ones, # =!= {0, 0} &],
+            held = indexHoldApply[PadArray, {held, indexHeldValue[ones], indexHeldValue[1]}]
+        ];
+        held
+    ]
+
+indexStepExpression[step : KeyValuePattern["Step" -> "Transpose"], {in_Hold}, inactive_] :=
+    indexHoldApply[If[inactive, Inactive[Transpose], ArrayTranspose], {in, indexHeldValue[step["Permutation"]]}]
 
 (* Broadcasting repeats an axis the output carries and no operand supplies, and
    it is genuine work rather than bookkeeping that could be elided: Wolfram
@@ -98,33 +118,37 @@ indexStepExpression[step : KeyValuePattern["Step" -> "Transpose"], {in_Hold}] :=
    A RANK-0 register takes ConstantArray instead, and the step's own shape says
    when: the frame it writes is the frame it read plus the axes it spreads, so a
    frame as long as the size list is a frame that was empty. *)
-indexStepExpression[step : KeyValuePattern["Step" -> "Broadcast"], {in_Hold}] :=
-    If[ Length[step["Frame"]] === Length[step["Sizes"]],
-        indexHoldApply[ConstantArray, {in, indexHeldValue[step["Sizes"]]}],
-        indexHoldApply[
-            Developer`ToPackedArray,
-            {
-                indexHoldApply[
-                    ArrayContract,
-                    {
-                        indexHoldApply[Inactive[TensorProduct], Join[{in}, Map[indexOnesExpression, step["Sizes"]]]],
-                        indexHeldValue[{}]
-                    }
-                ]
-            }
-        ]
+indexStepExpression[step : KeyValuePattern["Step" -> "Broadcast"], {in_Hold}, inactive_] :=
+    Which[
+        inactive,
+            indexHoldApply[Inactive[TensorProduct], Join[{in}, Map[indexOnesExpression, step["Sizes"]]]],
+        Length[step["Frame"]] === Length[step["Sizes"]],
+            indexHoldApply[ConstantArray, {in, indexHeldValue[step["Sizes"]]}],
+        True,
+            indexHoldApply[
+                Developer`ToPackedArray,
+                {
+                    indexHoldApply[
+                        ArrayContract,
+                        {
+                            indexHoldApply[Inactive[TensorProduct], Join[{in}, Map[indexOnesExpression, step["Sizes"]]]],
+                            indexHeldValue[{}]
+                        }
+                    ]
+                }
+            ]
     ]
 
 (* A multiply takes the operands of a descriptor that are all scalars, which
    have nothing to contract and no frame to align. *)
-indexStepExpression[KeyValuePattern["Step" -> "Multiply"], ins : {__Hold}] :=
-    indexHoldApply[Times, ins]
+indexStepExpression[KeyValuePattern["Step" -> "Multiply"], ins : {__Hold}, inactive_] :=
+    indexHoldApply[If[inactive, Inactive[Times], Times], ins]
 
-indexStepExpression[step : KeyValuePattern["Step" -> "Contract"], ins : {__Hold}] :=
+indexStepExpression[step : KeyValuePattern["Step" -> "Contract"], ins : {__Hold}, inactive_] :=
     indexHoldApply[
-        ArrayContract,
+        If[inactive, Inactive[ArrayContract], ArrayContract],
         {
-            indexHoldApply[Inactive[TensorProduct], Join[ins, Map[indexDeltaExpression, Lookup[step, "Deltas", {}]]]],
+            indexHoldApply[Inactive[TensorProduct], Join[Map[indexDeltaExpression[#, inactive] &, Lookup[step, "Deltas", {}]], ins]],
             indexHeldValue[step["Groups"]]
         }
     ]
@@ -136,12 +160,23 @@ indexStepExpression[step : KeyValuePattern["Step" -> "Contract"], ins : {__Hold}
    Function in one step at the end, a head that holds its argument as firmly, so
    nothing below was ever exposed.  A plan with no steps gives Function[Slot[1]],
    which applies to the operand itself - the descriptor that asks for nothing
-   copies nothing. *)
+   copies nothing.
 
-indexPlanExpression[plan_Association] := Module[{registers = <||>},
+   The INACTIVE rendering is the same plan with every step that computes held
+   inactive, in the heads of the structural vocabulary this paclet classifies
+   and shapes: Inactive[ArrayContract] over an Inactive[TensorProduct] of the
+   operands, a batch index's delta among them as the SymbolicDeltaProductArray
+   whose dimensions the product reads, Inactive[Transpose] and
+   Inactive[ArrayReshape], a broadcast as the Inactive[TensorProduct] with
+   vectors of ones, and a product of scalars as Inactive[Times].  Applied to the
+   operands it gives a tree whose ArrayDimensions is the result's at every node,
+   and which ArrayMaterialize computes - the deferred contraction a tensor
+   network carries. *)
+
+indexPlanExpression[plan_Association, inactive_ : False] := Module[{registers = <||>},
     Do[registers[k] = indexSlotExpression[k], {k, Length[plan["InputDimensions"]]}];
     Do[
-        registers[step["Output"]] = indexStepExpression[step, Lookup[registers, step["Inputs"]]],
+        registers[step["Output"]] = indexStepExpression[step, Lookup[registers, step["Inputs"]], TrueQ[inactive]],
         {step, plan["Steps"]}
     ];
     Replace[registers[plan["Result"]], Hold[body_] :> Function[body]]
@@ -178,13 +213,14 @@ indexPlanExpression[plan_Association] := Module[{registers = <||>},
    explicit, which a tensor-network contraction hands back unactivated - is
    materialized: it has a value and merely defers computing it, and its tier
    reads Lazy with no head to rebuild through, so a step would otherwise expand
-   it per scalar. *)
+   it per scalar.  An inactive result keeps such a tree as a leaf instead, the
+   tree it builds being deferred too. *)
 
-indexNativeOperand[a_ ? opaqueWrapperQ] := ArrayMaterialize[a]
+indexNativeOperand[a_ ? opaqueWrapperQ, _] := ArrayMaterialize[a]
 
-indexNativeOperand[a_ ? deferredTreeQ] := ArrayMaterialize[a]
+indexNativeOperand[a_ ? deferredTreeQ, inactive_] := If[TrueQ[inactive], a, ArrayMaterialize[a]]
 
-indexNativeOperand[a_] := If[! ArrayExplicitQ[a] || ArrayQ[a], a, ArrayMaterialize[a]]
+indexNativeOperand[a_, _] := If[! ArrayExplicitQ[a] || ArrayQ[a], a, ArrayMaterialize[a]]
 
 (* === units are carried, not computed ===
 
@@ -258,7 +294,7 @@ indexUnitsOn[result_, units_List] := With[{scale = Times @@ Map[Quantity[1, #] &
    one built by ArrayIndexPlan and reused is exactly where the check earns
    itself. *)
 
-indexExecutePlan[plan_Association, arrays_List] := Module[{operands, units},
+indexExecutePlan[plan_Association, arrays_List, inactive_ : False] := Module[{operands, units},
     If[ Length[arrays] =!= Length[plan["InputDimensions"]],
         indexFail[
             ArrayIndexPlan,
@@ -267,7 +303,7 @@ indexExecutePlan[plan_Association, arrays_List] := Module[{operands, units},
             <|"Operands" -> Length[arrays], "InputShapes" -> Length[plan["InputDimensions"]]|>
         ]
     ];
-    operands = Map[indexNativeOperand, unwrapArrayObjects[arrays]];
+    operands = Map[indexNativeOperand[#, inactive] &, unwrapArrayObjects[arrays]];
     Do[
         With[{dims = indexOperandDimensions[operands[[k]]], planned = plan["InputDimensions"][[k]]},
             If[ dims =!= planned,
@@ -281,6 +317,10 @@ indexExecutePlan[plan_Association, arrays_List] := Module[{operands, units},
         ],
         {k, Length[operands]}
     ];
+    (* An inactive result is the tree over the operands as they are: the units
+       are lifted for a computation, and the tree computes nothing until it is
+       materialized, by ArrayContract, which carries a unit through itself. *)
+    If[ TrueQ[inactive], Return[indexPlanExpression[plan, True] @@ operands, Module]];
     {operands, units} = indexUnitsOff[operands];
     (* The operands are handed to the plan's own Function, which is the value
        the "Expression" property renders and this is the application it names.  A

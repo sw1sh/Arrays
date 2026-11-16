@@ -441,19 +441,29 @@ deltaEmbed[values_, slotOf_List, dims_List] := With[{s = SparseArray[values]},
 
 deltaContract[arrays_List, c_] /; ! AnyTrue[arrays, deltaOperandQ] := Missing["NotApplicable"]
 
-deltaContract[arrays_List, c_] := Module[
-    {deltaQ, partners, partnerOf, operandDims, ranks, offsets, dims, edges, classes, classOf, dimOf, free,
-        outClasses, slotOf, groups, factor = 1, ops = {}, covered, values},
-    deltaQ = deltaOperandQ /@ arrays;
-    (* the operands that are not deltas, packed, in a list that holds no delta
-       and so keeps them packed *)
-    partners = deltaPartnerArray /@ Pick[arrays, deltaQ, False];
-    If[ ! AllTrue[partners, deltaPartnerQ], Return[Missing["NotApplicable"], Module]];
-    partnerOf = AssociationThread[Flatten[Position[deltaQ, False, {1}]], Range[Length[partners]]];
-    operandDims = Table[
-        If[deltaQ[[k]], deltaDimensions[arrays[[k]]], Dimensions[partners[[partnerOf[k]]]]],
-        {k, Length[arrays]}
-    ];
+(* What a contraction does with its indices depends on the operands' shapes,
+   which slots the deltas tie and the slot groups, and on nothing in the
+   operands' entries: the classes, the class each output position reads, the
+   classes each operand carries and the diagonal it contributes over them, the
+   classes summed with no operand to carry them.  That analysis is most of the
+   cost of a small contraction, and a contraction repeated over operands of the
+   same shapes - a step of a tensor network, a prepared index plan - repeats it
+   exactly, so it is kept per shape, in a cache that is emptied when it fills
+   rather than allowed to grow. *)
+
+$deltaStructureCache = <||>;
+
+deltaStructure[key : {deltaQ_, operandDims_, deltaGroups_, c_}] := Lookup[
+    $deltaStructureCache,
+    Key[key],
+    With[{structure = deltaStructureOf[deltaQ, operandDims, deltaGroups, c]},
+        If[Length[$deltaStructureCache] >= 512, $deltaStructureCache = <||>];
+        $deltaStructureCache[key] = structure
+    ]
+]
+
+deltaStructureOf[deltaQ_List, operandDims_List, deltaGroups_List, c_] := Module[
+    {ranks, offsets, dims, edges, classes, classOf, dimOf, free, outClasses, slotOf, groups, partnerSlots, covered},
     ranks = Length /@ operandDims;
     dims = Catenate[operandDims];
     If[ ! (MatchQ[c, {{__Integer ? Positive} ...}] && DuplicateFreeQ[Flatten[c]] && Max[Flatten[c], 0] <= Length[dims]) ||
@@ -462,9 +472,9 @@ deltaContract[arrays_List, c_] := Module[
     ];
     offsets = Most[Prepend[Accumulate[ranks], 0]];
     edges = Join[
-        Catenate @ Table[
-            If[deltaQ[[k]], With[{offset = offsets[[k]]}, Catenate[Partition[offset + #, 2, 1] & /@ deltaSlotGroups[arrays[[k]]]]], {}],
-            {k, Length[arrays]}
+        Catenate @ MapThread[
+            Function[{offset, slotGroups}, Catenate[Partition[offset + #, 2, 1] & /@ slotGroups]],
+            {Pick[offsets, deltaQ], deltaGroups}
         ],
         Catenate[Partition[#, 2, 1] & /@ c]
     ];
@@ -477,37 +487,67 @@ deltaContract[arrays_List, c_] := Module[
     outClasses = DeleteDuplicates[classOf[[free]]];
     slotOf = Replace[classOf[[free]], Thread[outClasses -> Range[Length[outClasses]]], {1}];
     groups = Select[Values[PositionIndex[slotOf]], Length[#] > 1 &];
-
-    (* every operand that is not a delta, its levels renamed to their classes *)
-    Do[
-        With[{p = partners[[partnerOf[k]]]},
-            If[ ranks[[k]] === 0,
-                factor = factor p,
-                With[{slotClasses = classOf[[offsets[[k]] + Range[ranks[[k]]]]]},
-                    With[{distinct = DeleteDuplicates[slotClasses]},
-                        AppendTo[ops, {
-                            classDiagonal[p, Replace[slotClasses, Thread[distinct -> Range[Length[distinct]]], {1}]],
-                            distinct
-                        }]
-                    ]
+    (* per operand that is not a delta: its rank, the classes it carries once
+       each, and the levels its diagonal over them folds onto *)
+    partnerSlots = Map[
+        Function[k,
+            With[{slotClasses = classOf[[offsets[[k]] + Range[ranks[[k]]]]]},
+                With[{distinct = DeleteDuplicates[slotClasses]},
+                    {ranks[[k]], distinct, Replace[slotClasses, Thread[distinct -> Range[Length[distinct]]], {1}]}
                 ]
             ]
         ],
-        {k, Keys[partnerOf]}
+        Flatten[Position[deltaQ, False, {1}]]
+    ];
+    covered = Union @@ Prepend[Cases[partnerSlots, {r_, distinct_, _} /; r > 0 :> distinct], {}];
+    <|
+        "DimOf" -> dimOf, "OutClasses" -> outClasses, "SlotOf" -> slotOf, "Groups" -> groups,
+        "FreeDims" -> dims[[free]], "PartnerSlots" -> partnerSlots, "Covered" -> covered,
+        "OnesClasses" -> Select[Range[Length[classes]], MemberQ[outClasses, #] && ! MemberQ[covered, #] &],
+        "SummedFactor" -> Times @@ Lookup[dimOf, Select[Range[Length[classes]], ! MemberQ[covered, #] && ! MemberQ[outClasses, #] &]]
+    |>
+]
+
+deltaContract[arrays_List, c_] := Module[
+    {deltaQ, partners, structure, dimOf, outClasses, covered, factor = 1, ops = {}, values},
+    deltaQ = deltaOperandQ /@ arrays;
+    (* the operands that are not deltas, packed, in a list that holds no delta
+       and so keeps them packed *)
+    partners = deltaPartnerArray /@ Pick[arrays, deltaQ, False];
+    If[ ! AllTrue[partners, deltaPartnerQ], Return[Missing["NotApplicable"], Module]];
+    structure = deltaStructure[{
+        deltaQ,
+        ReplacePart[
+            ConstantArray[{}, Length[arrays]],
+            Join[
+                Thread[Flatten[Position[deltaQ, True, {1}]] -> Map[deltaDimensions, Pick[arrays, deltaQ]]],
+                Thread[Flatten[Position[deltaQ, False, {1}]] -> Map[Dimensions, partners]]
+            ]
+        ],
+        Map[deltaSlotGroups, Pick[arrays, deltaQ]],
+        c
+    }];
+    If[ MissingQ[structure], Return[structure, Module]];
+    dimOf = structure["DimOf"];
+    outClasses = structure["OutClasses"];
+    covered = structure["Covered"];
+
+    (* every operand that is not a delta, its levels renamed to their classes *)
+    MapThread[
+        Function[{p, slots},
+            If[ First[slots] === 0,
+                factor = factor p,
+                AppendTo[ops, {classDiagonal[p, slots[[3]]], slots[[2]]}]
+            ]
+        ],
+        {partners, structure["PartnerSlots"]}
     ];
     partners = ops[[All, 1]];
-    covered = Union @@ Prepend[ops[[All, 2]], {}];
-    Do[
-        Which[
-            MemberQ[covered, k], Null,
-            MemberQ[outClasses, k], If[ops =!= {}, AppendTo[ops, {ConstantArray[1, dimOf[k]], {k}}]],
-            True, factor = factor dimOf[k]
-        ],
-        {k, Length[classes]}
-    ];
+    If[ ops =!= {}, ops = Join[ops, Map[{ConstantArray[1, dimOf[#]], {#}} &, structure["OnesClasses"]]]];
+    factor = factor structure["SummedFactor"];
 
-    If[ ops === {} && factor === 1 && free =!= {},
-        Return[deltaArray[dims[[free]], groups], Module]
+    If[ ops === {} && factor === 1 && structure["FreeDims"] =!= {},
+        Return[deltaArray[structure["FreeDims"], structure["Groups"]], Module]
     ];
     values = Which[
         ops =!= {}, classContract[ops, outClasses, dimOf],
@@ -528,7 +568,7 @@ deltaContract[arrays_List, c_] := Module[
             True, values
         ]
     ];
-    If[groups === {}, values, deltaEmbed[values, slotOf, dims[[free]]]]
+    If[structure["Groups"] === {}, values, deltaEmbed[values, structure["SlotOf"], structure["FreeDims"]]]
 ]
 
 contractJoin[arrays_, c_] := With[{r = deltaContract[arrays, c]}, r /; ! MissingQ[r]]

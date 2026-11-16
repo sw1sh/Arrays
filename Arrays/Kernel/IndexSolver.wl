@@ -226,7 +226,12 @@ indexCheckComposite[c_Association] :=
    two operands of the same extent is the ordinary case, not a re-declaration -
    and a disagreement is a refusal whichever side arrived first.  A literal or
    unit axis gets its own message, since its size is written in the descriptor
-   and the operand is what disagrees with it. *)
+   and the operand is what disagrees with it.
+
+   With "DimensionMismatch" -> "Pad" a disagreement is no refusal: the axis
+   takes the larger size, whichever arrived first, and the plan pads every
+   operand that is shorter there.  A literal or a unit axis is refused all the
+   same, its size being the descriptor's own. *)
 
 indexMergeSize[id_Integer, n_Integer] :=
     Module[{known = Lookup[$indexSizes, id, None]},
@@ -240,6 +245,8 @@ indexMergeSize[id_Integer, n_Integer] :=
                     ArrayIndexPlan, "literal", {indexAxisLabel[$indexNormalized, id], $indexShapeIndex, n},
                     <|"Axis" -> id, "Source" -> indexSourceOf[$indexNormalized["Axes"][id]["Source"]]|>
                 ],
+            Lookup[$indexNormalized, "DimensionMismatch", "Error"] === "Pad",
+                AssociateTo[$indexSizes, id -> Max[known, n]],
             True,
                 indexFail[
                     ArrayIndexPlan, "conflict", {indexAxisLabel[$indexNormalized, id], known, n},

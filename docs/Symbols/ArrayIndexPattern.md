@@ -54,7 +54,7 @@ RelatedTutorials: [IndexNotation]
 | `"Targets"` | the axes a target marks, under the `"Targeting"` setting in force |
 | `"Properties"` | the list of supported properties |
 
-- `"Targeting"` and `"DefaultOutput"` are resolved here and travel with the object, which is why a prepared pattern or a prepared [ArrayIndexPlan]() declines either of them; [ArrayIndexPlan]() carries that rule, and [ArrayIndexContract]() what a target does. An option name [ArrayIndexPattern]() does not declare is declined before any setting is read.
+- `"Targeting"`, `"DefaultOutput"`, `"DimensionMismatch"` and `"IndexMultiplicity"` are resolved here and travel with the object, which is why a prepared pattern or a prepared [ArrayIndexPlan]() declines them; [ArrayIndexPlan]() carries that rule, and [ArrayIndexContract]() what a target does and what padding and a tensor power read. `"IndexMultiplicity" -> True` admits an axis repeated in the output shape, outside a composite, and `"DimensionMismatch" -> "Pad"` is read when the sizes are solved. An option name [ArrayIndexPattern]() does not declare is declined before any setting is read.
 - `"DefaultOutput"` resolves the output shape of a descriptor that writes none. `"Contracted"`, the default here, keeps the axes occurring exactly once, in first-occurrence order; `"Identity"` keeps the single input shape. An empty output side, as in `"ij->"`, is an output shape that is empty and not a missing one, so `"ij"` has output rank 2 and `"ij->"` has output rank 0.
 - The occurrence policy is not decided here: a descriptor the grammar accepts may still be declined where it is analyzed, and `"Effects"` and `"Targets"` run that analysis, so a property lookup can report an `ArrayIndexPlan` message.
 - The object is inert and is taken apart rather than recompiled wherever it stands in a descriptor position, for [ArrayIndexPlan](), [ArrayIndexContract]() and [ArrayIndexTransform]() alike, which is the compile-once path. It carries the axis sizes its own construction resolved as well as its settings, so a binding list given with a prepared pattern or a prepared [ArrayIndexPlan]() is declined with an `ArrayIndexPattern::bindings` or an `ArrayIndexPlan::bindings` message: bind the axis in the call that builds the object.
@@ -462,7 +462,7 @@ ArrayIndexPattern[{{i_, j_}} :> {{i}, {j}}]
 
 ---
 
-An axis repeated within one output shape names no layout:
+An axis repeated within one output shape names no layout, unless `"IndexMultiplicity" -> True` asks for the tensor power reading:
 
 ```wl
 ArrayIndexPattern["i->ii"]

@@ -2,8 +2,9 @@
 
 Supersedes three separate index-notation implementations by folding them into
 one compiler with one IR and one public surface, hosted in this paclet. The
-phase 1 surface of section 11 and the tiers of phase 2 are implemented; the
-phases after them are design.
+phase 1 surface of section 11, the tiers of phase 2 and the `EinsteinSummation`
+readings section 9 makes options are implemented; the phases after them are
+design.
 
 ## 1. The three inputs
 
@@ -324,8 +325,9 @@ tier-polymorphic Arrays function:
 | Step | Primitive |
 | --- | --- |
 | `ReshapeStep` (split / merge / unit axes) | `ReshapeArray` |
+| `PadStep` (under `"DimensionMismatch" -> "Pad"`) | `PadArray` |
 | `TransposeStep` | `ArrayTranspose` |
-| `ContractStep` | `ArrayContract[Inactive[TensorProduct][…, Inactive[SymbolicDeltaProductArray][…]], groups]`, one delta per batch index |
+| `ContractStep` | `ArrayContract[Inactive[TensorProduct][Inactive[SymbolicDeltaProductArray][…], …], groups]`, one delta per batch index, the deltas first |
 | `MultiplyStep` (operands that are all scalars) | `Times` |
 | `BroadcastStep` | tensor product with a ones vector over no group — `ArrayContract[Inactive[TensorProduct][a, ConstantArray[1, n]], {}]` |
 | `ReduceStep`, additive | contraction against a ones vector |
@@ -359,7 +361,10 @@ operands: `ArrayContract` contracts a delta by identifying the slots it ties,
 so the batch index is multiplied block by block at the cost of the result, and
 an elementwise product or a scaling is a single `Times`. The delta is written
 `Inactive[SymbolicDeltaProductArray]` in the plan because the evaluator unpacks
-a packed array beside an active one. The earlier lowering - broadcast every
+a packed array beside an active one, and the deltas come first in the node, so
+the batch axes lead the result: that is the layout a batch product keeps and
+the one the delta route computes in, and a batch matrix product needs no
+transpose after it. The earlier lowering - broadcast every
 sharing operand into one frame and multiply elementwise - built the operands'
 outer product, 134MB for a batch of four 256x64 by 64x256 products whose result
 is 2MB, and had no form that keeps a symbolic operand inert.
@@ -436,8 +441,8 @@ than one of those three.
 | # | Question | Einx.wl | Einstoff | EinsteinSummation | Decision |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Index on ≥3 operands (hyperedge) | not expressible | pairwise only | supported via `IndexedMultiply` | **Support.** The alignment core (§7.1) gives it for free; the pairwise fold stays the fast path for the binary case. |
-| 2 | Mismatched dimensions on a shared index | error | error | pads to the max (`ArrayPad`, `"Fixed"`/1) | **Error by default.** `IndexedMultiply`'s padding is a `TensorNetworks` convenience that silently changes results; expose it as `"DimensionMismatch" -> "Pad"` and leave it off. |
-| 3 | Repeated axis in the **output** | n/a | rejected (no layout) | tensor power via `GeneralizedPower` | **Reject**, matching Einstoff and einx. `EinsteinSummation`'s multiplicity path is a real feature (`{{i}} :> {{i,i}}` is the outer square) but a surprising reading of a repeated name; if TensorNetworks needs it, it is `"IndexMultiplicity" -> True`, off by default. |
+| 2 | Mismatched dimensions on a shared index | error | error | pads to the max (`ArrayPad`, `"Fixed"`/1) | **Error by default; `"DimensionMismatch" -> "Pad"` opts in.** `IndexedMultiply`'s padding is a `TensorNetworks` convenience that silently changes results, so it is off unless asked for. With the option an axis takes the largest size the operands give it, and the plan pads each shorter operand with a `PadStep` by `IndexedMultiply`'s rule: an extent of 1 is repeated, any other is padded at the end with 1s. |
+| 3 | Repeated axis in the **output** | n/a | rejected (no layout) | tensor power via `GeneralizedPower` | **Reject by default; `"IndexMultiplicity" -> True` opts in.** Rejecting matches Einstoff and einx: `EinsteinSummation`'s multiplicity path is a real feature (`{{i}} :> {{i,i}}` is the outer square) but a surprising reading of a repeated name. With the option the plan contracts copies of its result, `GeneralizedPower`'s reading: as many copies as the most-repeated axis occurs, the *r*-th occurrence read from the *r*-th copy, and an axis's levels in the copies past its own count summed together. An axis repeated within one input and kept (`ii->ii`) stays a declined diagonal, the one case where the two differ. |
 | 4 | Repeated axis **within one input**, dropped | not handled | self-contraction (trace), pairwise only | contracted | **Support pairwise** (GR-style traces). >2 occurrences and diagonal-keep (`aa->a`) are rejected, as in both sources. |
 | 5 | Single-character index names | no | no | yes (`Characters`) | **Both**, disambiguated by whitespace (§4.1). |
 | 6 | `->` vs `:>` | string only | `:>` canonical, `->` warned | `->` | **`:>` canonical, `->` warned but supported** — `EinsteinSummation` call sites depend on it. |
@@ -481,6 +486,14 @@ batch index to a delta in the contraction, and `Tests/IndexContract.wlt` runs
 the acceptance over every shape of plan, each inert tree materializing to the
 explicit result once its symbol is substituted.
 
+**`EinsteinSummation` compatibility.** The padding and the tensor power of §9
+rows 2 and 3, as the opt-in options `"DimensionMismatch" -> "Pad"` and
+`"IndexMultiplicity" -> True`, and an unevaluated result, `"Inactive" -> True`.
+Acceptance: `EinsteinSummation`'s corpus through `ArrayIndexContract` with the
+options set, every case but the kept diagonal `ii->ii` matching. Implemented;
+it is what `TensorNetworks` needs to make `EinsteinSummation` a thin wrapper
+(§13).
+
 **Phase 3 — reduce and blocks.** `ArrayIndexReduce`, `ArrayIndexApply`, the
 reducer catalog with the §7.4 lowerings, targeting policy. Acceptance: the
 `TEin*` verb surface is reproducible as calls, verified against Einx.wl's
@@ -521,14 +534,18 @@ Three oracles, in increasing order of value:
   answer today. Is a symbolic `Inactive[ArrayReduce]` node worth teaching
   `ArrayDimensions` and `ArraySymbolicQ` about, so that `Max`-reductions can
   stay symbolic?
-- **Contraction order.** `ArrayIndexContract` over many operands needs a path.
-  Reimplementing `TensorNetworks`' path planners here would duplicate them;
-  taking a dependency inverts the current direction (TensorNetworks depends on
-  Arrays). Proposal: default to a left fold that keeps only the axes a later
-  operand still needs (Einstoff's `InnerStep` policy), and accept
-  `"ContractionPath" -> path` so TensorNetworks can supply a planned one.
-- **Does `TensorNetworks` migrate?** If `EinsteinSummation` becomes a thin
-  wrapper over `ArrayIndexContract`, decisions 2 and 3 in §9 need the opt-in
-  options actually implemented, and `IndexedMultiply` becomes the alignment
-  core's public face. Worth doing, but it is a second project, not a
-  precondition for this one.
+- **Contraction order — decided: paths belong to `TensorNetworks`.**
+  Reimplementing its path planners here would duplicate them, and taking a
+  dependency would invert the current direction (TensorNetworks depends on
+  Arrays). `ArrayIndexContract` over many operands contracts them in one node,
+  where `ArrayContract` takes the pair with the smallest result first; a planned
+  path is applied by `TensorNetworks`, calling `ArrayIndexContract` pair by
+  pair, so no `"ContractionPath"` option is added here.
+- **Does `TensorNetworks` migrate? — decided: it keeps its methods and gains
+  this one.** `TensorNetworks` keeps its path planners and its contraction
+  Method engines and adds `ArrayIndexContract` as one more Method;
+  `EinsteinSummation` becomes a thin wrapper over `ArrayIndexContract`, and the
+  descriptor parsing and alignment machinery it carried are retired. That
+  needed decisions 2 and 3 in §9 as options, which are implemented, and an
+  unevaluated result: `"Inactive" -> True` gives the plan's tree, every node of
+  the dimensions it stands for, for `ArrayMaterialize` to compute.

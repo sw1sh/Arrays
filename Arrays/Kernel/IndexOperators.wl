@@ -19,13 +19,13 @@ PackageExport[ArrayIndexContract]
    Associations under one of these heads. *)
 
 
-ArrayIndexPattern::usage = "ArrayIndexPattern[desc] parses an index descriptor into a normalized pattern object, formatted as a summary box that shows its axes and its operand ranks; desc is a string in the einx or the classic einsum dialect, a list of input shapes given as a RuleDelayed to a list of output shapes, or a bare shape standing for a one-operand descriptor. A string containing a space is tokenized by identifier and one with no space by character, so \"ij,jk->ik\" and \"i j, j k -> i k\" name the same three axes and \"b s d, d e -> b s e\" keeps multi-character names. RuleDelayed holds the output shapes, so a bare output symbol names an axis rather than its global value; Rule evaluates both sides before the descriptor is read and is accepted with a message saying so, which is the spelling classic einsum call sites use. Every axis is interned to an operation-local integer identity carrying its display name, spelling kind and Wolfram context: a blank a_ binds one logical axis across the whole descriptor, a bare a on the input side is an ambient expression that is never localized by a blank of the same name, a bare a on the output side references such a blank where one exists, a string \"a\" and a targeted #a are hygienic, a Wolfram context never distinguishes two established axes of one name, and one name spelled two ways is declined.\nArrayIndexPattern[desc, bindings] takes axis sizes out of band as a list of rules keyed by a string, by a bare symbol, or by the target head the descriptor used; a Pattern key is declined, since a blank axis takes its size from the operand.\nArrayIndexPattern[desc][\"prop\"] gives a property and ArrayIndexPattern[desc][\"Properties\"] the list of supported properties. A descriptor the grammar does not accept, and one naming a construct outside the compiled vocabulary - a CirclePlus direct sum, an ellipsis, a named sequence, a targeted literal, more than one output shape, or an axis repeated within one output shape - is declined with a message naming the fragment and the call is left unevaluated. \"Targeting\" and \"DefaultOutput\" are resolved here and travel with the object, so giving one where the descriptor position already holds a prepared ArrayIndexPattern or ArrayIndexPlan is declined, as is a binding list given there - the sizes it names belong to the call that built the object - and as is an option name ArrayIndexPattern does not declare."
+ArrayIndexPattern::usage = "ArrayIndexPattern[desc] parses an index descriptor into a normalized pattern object, formatted as a summary box that shows its axes and its operand ranks; desc is a string in the einx or the classic einsum dialect, a list of input shapes given as a RuleDelayed to a list of output shapes, or a bare shape standing for a one-operand descriptor. A string containing a space is tokenized by identifier and one with no space by character, so \"ij,jk->ik\" and \"i j, j k -> i k\" name the same three axes and \"b s d, d e -> b s e\" keeps multi-character names. RuleDelayed holds the output shapes, so a bare output symbol names an axis rather than its global value; Rule evaluates both sides before the descriptor is read and is accepted with a message saying so, which is the spelling classic einsum call sites use. Every axis is interned to an operation-local integer identity carrying its display name, spelling kind and Wolfram context: a blank a_ binds one logical axis across the whole descriptor, a bare a on the input side is an ambient expression that is never localized by a blank of the same name, a bare a on the output side references such a blank where one exists, a string \"a\" and a targeted #a are hygienic, a Wolfram context never distinguishes two established axes of one name, and one name spelled two ways is declined.\nArrayIndexPattern[desc, bindings] takes axis sizes out of band as a list of rules keyed by a string, by a bare symbol, or by the target head the descriptor used; a Pattern key is declined, since a blank axis takes its size from the operand.\nArrayIndexPattern[desc][\"prop\"] gives a property and ArrayIndexPattern[desc][\"Properties\"] the list of supported properties. A descriptor the grammar does not accept, and one naming a construct outside the compiled vocabulary - a CirclePlus direct sum, an ellipsis, a named sequence, a targeted literal, more than one output shape, or an axis repeated within one output shape - is declined with a message naming the fragment and the call is left unevaluated; with \"IndexMultiplicity\" -> True an axis repeated within the output shape, outside a composite, is admitted and read as a tensor power. \"Targeting\", \"DefaultOutput\", \"DimensionMismatch\" and \"IndexMultiplicity\" are resolved here and travel with the object, so giving one where the descriptor position already holds a prepared ArrayIndexPattern or ArrayIndexPlan is declined, as is a binding list given there - the sizes it names belong to the call that built the object - and as is an option name ArrayIndexPattern does not declare."
 
-ArrayIndexPlan::usage = "ArrayIndexPlan[desc, dims] solves the axis sizes of an index descriptor against a list of operand dimension lists and gives an execution plan object, formatted as a summary box that shows the operand and output dimensions; sizes come from unifying every atomic axis against its operand dimension and then resolving each CircleTimes composite whose factors are all known but one, iterated to a fixed point, so a plan needs no data at all.\nArrayIndexPlan[desc, arrays] reads the dimensions with ArrayDimensions, treating anything that is not a container as a rank-0 operand; a list of positive-integer vectors whose lengths match the input shapes is read as dimensions rather than as arrays.\nArrayIndexPlan[pattern, dimsOrArrays] reuses a parsed ArrayIndexPattern, which is the compile-once path a contraction over many shapes wants.\nThe plan is an ordered list of steps over a single-assignment register file: a reshape that splits composites and squeezes unit axes, a transpose, a broadcast that appends an axis of a given extent as a tensor product with a vector of ones, a contraction of its operands over given slot groups, lowered to ArrayContract over the inactive tensor product of them, where a one-slot group sums that slot, an n-slot group is the generalized trace a hyperedge lowers to and an axis the output carries from two or more operands is tied through a delta among them, and a multiply for a descriptor whose operands are all scalars. ArrayIndexPlan[...][\"Expression\"] gives that plan as a Function of the operands, operand k spelled #k, and it is the function the executors apply, so plan[\"Expression\"][a1, a2, ...] computes what the trace shows. A size conflict, an axis with no size, an operand whose rank does not match its shape, a composite whose known factors do not divide its dimension, and a dimension that is not a positive integer are each declined with a message naming the axis and both sizes, and the call is left unevaluated. \"Targeting\" and \"DefaultOutput\" are read where a descriptor is compiled, so a prepared ArrayIndexPattern or ArrayIndexPlan in the descriptor position carries the settings its own construction resolved and is declined either of them, and a binding list given with one is declined for the same reason, as is an option name ArrayIndexPlan does not declare."
+ArrayIndexPlan::usage = "ArrayIndexPlan[desc, dims] solves the axis sizes of an index descriptor against a list of operand dimension lists and gives an execution plan object, formatted as a summary box that shows the operand and output dimensions; sizes come from unifying every atomic axis against its operand dimension and then resolving each CircleTimes composite whose factors are all known but one, iterated to a fixed point, so a plan needs no data at all.\nArrayIndexPlan[desc, arrays] reads the dimensions with ArrayDimensions, treating anything that is not a container as a rank-0 operand; a list of positive-integer vectors whose lengths match the input shapes is read as dimensions rather than as arrays.\nArrayIndexPlan[pattern, dimsOrArrays] reuses a parsed ArrayIndexPattern, which is the compile-once path a contraction over many shapes wants.\nThe plan is an ordered list of steps over a single-assignment register file: a reshape that splits composites and squeezes unit axes, a pad that brings an operand shorter than its axes up to them where \"DimensionMismatch\" -> \"Pad\" admits one, a transpose, a broadcast that appends an axis of a given extent as a tensor product with a vector of ones, a contraction of its operands over given slot groups, lowered to ArrayContract over the inactive tensor product of them, where a one-slot group sums that slot, an n-slot group is the generalized trace a hyperedge lowers to and an axis the output carries from two or more operands is tied through a delta among them, and a multiply for a descriptor whose operands are all scalars; a tensor power, where \"IndexMultiplicity\" -> True admits a repeated output axis, is a contraction over copies of the result so far. ArrayIndexPlan[...][\"Expression\"] gives that plan as a Function of the operands, operand k spelled #k, and it is the function the executors apply, so plan[\"Expression\"][a1, a2, ...] computes what the trace shows. A size conflict, an axis with no size, an operand whose rank does not match its shape, a composite whose known factors do not divide its dimension, and a dimension that is not a positive integer are each declined with a message naming the axis and both sizes, and the call is left unevaluated. \"Targeting\" and \"DefaultOutput\" are read where a descriptor is compiled, so a prepared ArrayIndexPattern or ArrayIndexPlan in the descriptor position carries the settings its own construction resolved and is declined either of them, and a binding list given with one is declined for the same reason, as is an option name ArrayIndexPlan does not declare."
 
 ArrayIndexTransform::usage = "ArrayIndexTransform[desc, array] rearranges one array container according to an index descriptor: a CircleTimes composite on the input side splits its dimension into its factors with the leftmost factor outermost, a composite on the output side merges them again, a literal 1 is squeezed on the input side and inserted on the output side, and an axis present only on the output side is repeated to the size a binding or an inline Annotation gives it. With no output shape given the descriptor is shape-preserving. The steps are one reshape that splits composites and squeezes unit axes, one broadcast for the repeated axes, one transpose into the output order and one reshape that merges composites and inserts unit axes, each emitted only where it is not the identity, so a pure permutation is a single ArrayTranspose and a pure split is a single ReshapeArray.\nArrayIndexTransform[plan, array] executes a prepared ArrayIndexPlan.\nAn axis on the input and absent from the output would be summed rather than moved, so it is declined with a message naming the axis and ArrayIndexContract; the same holds for an axis repeated within one operand and for an anonymous axis, whatever its extent: the admission is decided before sizes are solved, and the squeezed spelling of a unit axis is the literal 1. A descriptor with more than one input shape or more than one output shape is declined. The steps keep the container they are handed: a symbolic container gives the unevaluated ReshapeArray, Transpose and tensor-product forms ArrayDimensions reads, a lazy container stays lazy where its head can rebuild through each step, a SparseArray and a packed array come back as themselves, and a QuantityArray comes back a QuantityArray in its own unit, the steps running on its magnitudes and the unit going back on the result; a NumericArray, a TabularColumn, a Tabular, a Dataset, an EventSeries and a ByteArray are materialized first and come back as plain arrays. \"Targeting\" and \"DefaultOutput\" are read where a descriptor is compiled, so a prepared ArrayIndexPattern or ArrayIndexPlan carries the settings its own construction resolved and is declined either of them, and a binding list given with one is declined for the same reason; an option name ArrayIndexTransform does not declare is declined."
 
-ArrayIndexContract::usage = "ArrayIndexContract[desc, arrays] contracts the given array containers according to an index descriptor: an axis on the output is carried, an axis absent from the output is summed over every slot carrying it - one slot for a single occurrence, two for an ordinary contraction, three and more for an index shared by three operands - and an axis repeated within one operand and absent from the output is a trace. With no output shape given, the output is the axes occurring exactly once, in first-occurrence order rather than sorted. An axis the output carries that two or more operands supply is a batch index, which is what makes a batch matrix product, a Hadamard product and a column scaling ordinary descriptors. The contraction is lowered to ArrayContract over the inactive tensor product of the operands, which contracts them against each other without ever building that product, so a SparseArray and a packed array keep their container; a batch index is a delta among the operands, which ArrayContract contracts block by block at the cost of the result, and a rank-0 operand is a factor of the same node. The result has the tier the operands join to: a symbolic operand gives an inert contraction node whose ArrayDimensions is the output shape and which ArrayMaterialize computes once its symbols have values, and a lazy operand gives a lazy container where its head can rebuild through the steps. A QuantityArray keeps its container whatever steps the descriptor emits: with the sum-of-products combiner every step is linear in its operands, so the unit is lifted off them, the steps run on the magnitudes and the product of the units goes back on the result, which is an ordinary Quantity where the result is rank 0 and an unwrapped array where the units cancel; a QuantityArray carrying a unit per column has no single unit to lift, and its elements carry their own units instead. A NumericArray, a TabularColumn, a Tabular, a Dataset, an EventSeries and a ByteArray have no container to rebuild and are materialized first: TensorProduct has no evaluation on those heads, and a TabularColumn is rank 1 by construction, so no step that raises the rank has one to give back.\nArrayIndexContract[plan, arrays] executes a prepared ArrayIndexPlan.\nAn axis repeated within one operand and kept on the output, an axis occurring three or more times in one operand, an axis repeated within one operand that also occurs on another, and an axis repeated within one output shape are each declined with a message naming the axis. \"Targeting\" and \"DefaultOutput\" are read where a descriptor is compiled, so a prepared ArrayIndexPattern or ArrayIndexPlan carries the settings its own construction resolved and is declined either of them, and a binding list given with one is declined for the same reason, while \"Combiner\" is read at execution and is taken with a prepared object as with a descriptor; an option name ArrayIndexContract does not declare is declined."
+ArrayIndexContract::usage = "ArrayIndexContract[desc, arrays] contracts the given array containers according to an index descriptor: an axis on the output is carried, an axis absent from the output is summed over every slot carrying it - one slot for a single occurrence, two for an ordinary contraction, three and more for an index shared by three operands - and an axis repeated within one operand and absent from the output is a trace. With no output shape given, the output is the axes occurring exactly once, in first-occurrence order rather than sorted. An axis the output carries that two or more operands supply is a batch index, which is what makes a batch matrix product, a Hadamard product and a column scaling ordinary descriptors. The contraction is lowered to ArrayContract over the inactive tensor product of the operands, which contracts them against each other without ever building that product, so a SparseArray and a packed array keep their container; a batch index is a delta among the operands, which ArrayContract contracts block by block at the cost of the result, and a rank-0 operand is a factor of the same node. The result has the tier the operands join to: a symbolic operand gives an inert contraction node whose ArrayDimensions is the output shape and which ArrayMaterialize computes once its symbols have values, and a lazy operand gives a lazy container where its head can rebuild through the steps. A QuantityArray keeps its container whatever steps the descriptor emits: with the sum-of-products combiner every step is linear in its operands, so the unit is lifted off them, the steps run on the magnitudes and the product of the units goes back on the result, which is an ordinary Quantity where the result is rank 0 and an unwrapped array where the units cancel; a QuantityArray carrying a unit per column has no single unit to lift, and its elements carry their own units instead. A NumericArray, a TabularColumn, a Tabular, a Dataset, an EventSeries and a ByteArray have no container to rebuild and are materialized first: TensorProduct has no evaluation on those heads, and a TabularColumn is rank 1 by construction, so no step that raises the rank has one to give back.\nArrayIndexContract[plan, arrays] executes a prepared ArrayIndexPlan.\nThree options carry EinsteinSummation's readings: \"DimensionMismatch\" -> \"Pad\" gives an axis the operands size differently the largest size and pads a shorter operand by IndexedMultiply's rule, an extent of 1 repeated and any other padded at the end with 1s; \"IndexMultiplicity\" -> True reads an axis repeated in the output shape as a tensor power, the contraction with each output axis once taken in as many copies as the most-repeated axis occurs, the r-th occurrence from the r-th copy and an axis's levels in the copies past its count summed together; and \"Inactive\" -> True gives the plan's tree unevaluated, Inactive[ArrayContract] over an Inactive[TensorProduct] of the operands with Inactive[Transpose] and Inactive[ArrayReshape] above it, every node of the result's dimensions and the whole computed by ArrayMaterialize.\nAn axis repeated within one operand and kept on the output, an axis occurring three or more times in one operand, an axis repeated within one operand that also occurs on another, and an axis repeated within one output shape are each declined with a message naming the axis. \"Targeting\", \"DefaultOutput\", \"DimensionMismatch\" and \"IndexMultiplicity\" are read where a descriptor is compiled, so a prepared ArrayIndexPattern or ArrayIndexPlan carries the settings its own construction resolved and is declined them, and a binding list given with one is declined for the same reason, while \"Combiner\" and \"Inactive\" are read at execution and are taken with a prepared object as with a descriptor; an option name ArrayIndexContract does not declare is declined."
 
 
 (* Grammar, hygiene and binding keys refuse on ArrayIndexPattern, whatever entry
@@ -45,7 +45,7 @@ ArrayIndexPattern::unsupported = "the descriptor names `1`, which is outside the
 
 ArrayIndexPattern::mishmash = "the axis `1` is spelled both as a symbol and as the string \"`1`\": one name takes one spelling, since a blank and a string carry different hygiene."
 
-ArrayIndexPattern::duplicate = "the axis `1` occurs more than once in one output shape: a repeated output axis names no layout."
+ArrayIndexPattern::duplicate = "the axis `1` occurs more than once in one output shape: a repeated output axis names no layout, unless \"IndexMultiplicity\" -> True reads it as a tensor power, which an axis inside an output composite has no copy for."
 
 ArrayIndexPattern::outputs = "the descriptor gives `1` output shapes: one output shape is compiled."
 
@@ -75,7 +75,7 @@ ArrayIndexPlan::rank = "input shape `1` names `2` axes and the operand there has
 
 ArrayIndexPlan::literal = "the literal axis `1` of input shape `2` does not match the dimension `3` there."
 
-ArrayIndexPlan::conflict = "the axis `1` is given the size `2` and the size `3`: one axis takes one size across the whole descriptor."
+ArrayIndexPlan::conflict = "the axis `1` is given the size `2` and the size `3`: one axis takes one size across the whole descriptor, unless \"DimensionMismatch\" -> \"Pad\" pads the shorter operands to the larger."
 
 ArrayIndexPlan::composite = "the composite of input shape `1` has known factors of product `2` against the dimension `3` there: a composite resolves when its known factors divide the dimension and it checks out when they multiply to it."
 
@@ -91,7 +91,7 @@ ArrayIndexPlan::target = "the targeted axes `1` are not the contracted axes `2`:
 
 ArrayIndexPlan::targetplace = "the targets on `1` mark no input occurrence: a target marks a contracted axis where an input shape carries it, so a target on the output side marks nothing."
 
-ArrayIndexPlan::option = "`1` is not a setting for `2`: \"Targeting\" takes True, Automatic or False, and \"DefaultOutput\" takes \"Contracted\" or \"Identity\"."
+ArrayIndexPlan::option = "`1` is not a setting for `2`: \"Targeting\" takes True, Automatic or False, \"DefaultOutput\" takes \"Contracted\" or \"Identity\", \"DimensionMismatch\" takes \"Error\" or \"Pad\", and \"IndexMultiplicity\" and \"Inactive\" take True or False."
 
 ArrayIndexPlan::noprop = "`1` is not a supported ArrayIndexPlan property; use \"Properties\" for the list of supported properties."
 
@@ -152,11 +152,14 @@ ArrayIndexTransform::arity = "a rearrangement takes one input shape and one outp
    contraction keeps the axes that occur exactly once.  "Combiner" is declared
    on the contraction alone, since nothing else pairs two operations. *)
 
-Options[ArrayIndexPattern] = {"DefaultOutput" -> "Contracted", "Targeting" -> Automatic}
+Options[ArrayIndexPattern] = {"DefaultOutput" -> "Contracted", "DimensionMismatch" -> "Error", "IndexMultiplicity" -> False, "Targeting" -> Automatic}
 
-Options[ArrayIndexPlan] = {"DefaultOutput" -> "Contracted", "Targeting" -> Automatic}
+Options[ArrayIndexPlan] = {"DefaultOutput" -> "Contracted", "DimensionMismatch" -> "Error", "IndexMultiplicity" -> False, "Targeting" -> Automatic}
 
-Options[ArrayIndexContract] = {"Combiner" -> {Times, Plus}, "DefaultOutput" -> "Contracted", "Targeting" -> Automatic}
+Options[ArrayIndexContract] = {
+    "Combiner" -> {Times, Plus}, "DefaultOutput" -> "Contracted", "DimensionMismatch" -> "Error",
+    "Inactive" -> False, "IndexMultiplicity" -> False, "Targeting" -> Automatic
+}
 
 Options[ArrayIndexTransform] = {"DefaultOutput" -> "Identity", "Targeting" -> Automatic}
 
@@ -183,7 +186,7 @@ Options[ArrayIndexTransform] = {"DefaultOutput" -> "Identity", "Targeting" -> Au
    this file is: an assignment evaluates its left-hand side, and both object
    expressions have definitions of their own. *)
 
-$indexCompiledOptions = {"DefaultOutput", "Targeting"}
+$indexCompiledOptions = {"DefaultOutput", "DimensionMismatch", "IndexMultiplicity", "Targeting"}
 
 indexCheckOptions[sym_, spec_, opts_] := (
     With[{names = Keys[Options[sym]]},
@@ -252,6 +255,32 @@ indexOption[sym_, opts_, "DefaultOutput"] := With[{value = OptionValue[sym, opts
     value
 ]
 
+(* "DimensionMismatch" and "IndexMultiplicity" are compiled into the normalized
+   descriptor, the first for the solver to read and the second for the parse,
+   which admits a repeated output axis only with it; "Inactive" is read at
+   execution, as "Combiner" is. *)
+
+indexOption[sym_, opts_, "DimensionMismatch"] := With[{value = OptionValue[sym, opts, "DimensionMismatch"]},
+    If[ ! MatchQ[value, "Error" | "Pad"],
+        indexFail[ArrayIndexPlan, "option", {value, "DimensionMismatch"}, <|"Source" -> HoldComplete[value]|>]
+    ];
+
+    value
+]
+
+indexOption[sym_, opts_, name : "IndexMultiplicity" | "Inactive"] := With[{value = OptionValue[sym, opts, name]},
+    If[ ! BooleanQ[value],
+        indexFail[ArrayIndexPlan, "option", {value, name}, <|"Source" -> HoldComplete[value]|>]
+    ];
+
+    value
+]
+
+indexCompileSettings[sym_, opts_] := Association @ Map[
+    Function[name, name -> indexOption[sym, opts, name]],
+    Intersection[{"DimensionMismatch", "IndexMultiplicity"}, Keys[Options[sym]]]
+]
+
 (* The sum of products is the combiner an inactive TensorContract over an
    inactive tensor product IS, so it is the one with a lowering; a general
    {mul, add} pair names a different node and is declined.  The setting is read
@@ -313,7 +342,8 @@ indexPatternDataFor[desc_, bindings_, opts_, sym_] := <|
     "Normalized" -> indexNormalizedDescriptor[
         indexSurfaceDescriptor[desc],
         bindings,
-        indexOption[sym, opts, "DefaultOutput"]
+        indexOption[sym, opts, "DefaultOutput"],
+        indexCompileSettings[sym, opts]
     ],
     "Targeting" -> indexOption[sym, opts, "Targeting"]
 |>
@@ -394,7 +424,11 @@ indexExecuted[sym_, spec_, arg_, bindings_, opts_] := Module[{analysis, operands
     analysis = indexAdmitEffects[indexAnalysisFor[spec, bindings, opts, sym], sym];
     operands = indexOperands[sym, analysis, arg];
 
-    indexExecutePlan[indexPlanFor[spec, analysis, operands], operands]
+    indexExecutePlan[
+        indexPlanFor[spec, analysis, operands],
+        operands,
+        sym === ArrayIndexContract && indexOption[sym, opts, "Inactive"]
+    ]
 ]
 
 
@@ -451,23 +485,30 @@ ArrayIndexPlan[spec_, dimsOrArrays_List, bindings : {(_Rule | _RuleDelayed) ...}
         ]) =!= $indexFailed
     ]
 
+(* A prepared plan is checked once, here, and bound for the rest of the call;
+   see $indexCheckedPlan in IndexPlan.wl. *)
+
+indexCheckedPlanData[HoldPattern[ArrayIndexPlan[plan_ ? indexPlanQ]]] := plan
+
+indexCheckedPlanData[_] := None
+
 ArrayIndexTransform[spec_, arg_, bindings : {(_Rule | _RuleDelayed) ...} : {}, opts : ((_Rule | _RuleDelayed) ...)] :=
     Module[{result},
-        result /; (result = catchIndexFailure[
+        result /; (result = Block[{$indexCheckedPlan = indexCheckedPlanData[spec]}, catchIndexFailure[
             indexCheckOptions[ArrayIndexTransform, spec, {opts}];
             indexCheckBindings[spec, bindings];
             indexExecuted[ArrayIndexTransform, spec, arg, bindings, {opts}]
-        ]) =!= $indexFailed
+        ]]) =!= $indexFailed
     ]
 
 ArrayIndexContract[spec_, arrays_, bindings : {(_Rule | _RuleDelayed) ...} : {}, opts : ((_Rule | _RuleDelayed) ...)] :=
     Module[{result},
-        result /; (result = catchIndexFailure[
+        result /; (result = Block[{$indexCheckedPlan = indexCheckedPlanData[spec]}, catchIndexFailure[
             indexCheckOptions[ArrayIndexContract, spec, {opts}];
             indexCheckBindings[spec, bindings];
             indexOption[ArrayIndexContract, {opts}, "Combiner"];
             indexExecuted[ArrayIndexContract, spec, arrays, bindings, {opts}]
-        ]) =!= $indexFailed
+        ]]) =!= $indexFailed
     ]
 
 

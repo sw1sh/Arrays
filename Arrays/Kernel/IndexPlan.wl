@@ -4,6 +4,7 @@ PackageScope[indexOperationAnalysis]
 PackageScope[indexAdmitEffects]
 PackageScope[indexExecutionPlan]
 PackageScope[indexPlanQ]
+PackageScope[$indexCheckedPlan]
 
 
 (* === the middle of the compiler ===
@@ -276,6 +277,21 @@ indexAdmitEffects[analysis_Association, sym_Symbol] :=
 indexGatherPermutation[current_List, wanted_List] :=
     Ordering[Flatten[Map[Function[id, FirstPosition[current, id]], wanted]]]
 
+(* The extent an operand has on each entry of its frame: an atomic term stands
+   for the operand's own dimension at its position, a factor of a composite for
+   the size its axis was solved to, and a unit axis is no entry at all.  These
+   are the solved sizes, except where "DimensionMismatch" -> "Pad" let an
+   operand be shorter than its axes. *)
+
+indexActualFrameDims[normalized_Association, k_Integer, shape_List, sizes_Association] :=
+    Map[
+        Function[leaf, If[Length[leaf[[2]]] === 1, shape[[First[leaf[[2]]]]], sizes[leaf[[1, 1]]]]],
+        Select[
+            indexFlatTerms[normalized["Inputs"][[k]]],
+            Function[leaf, normalized["Axes"][leaf[[1, 1]]]["Kind"] =!= "Unit"]
+        ]
+    ]
+
 (* Every step carries "Step", "Inputs", "Output", "Frame" and "Dimensions"; its
    own fields sit between the register it writes and the shape of what it
    writes, so a step reads as verb, operands, result, argument, shape. *)
@@ -286,15 +302,16 @@ indexEmit[step_String, inputs_List, output_Integer, own_Association, frame_List,
 
 (* The plan is a single-assignment register file: registers 1 to n hold the
    operands as given, each step writes one fresh register, and every register is
-   read at most once - so the whole plan renders to one nested expression whose
-   only open positions are the operand slots, which is the Function that
-   "Expression" hands back.
+   read at most once, a tensor power's copies apart - so the whole plan renders
+   to one nested expression whose only open positions are the operand slots,
+   which is the Function that "Expression" hands back.
 
-   The six passes are the alignment core: split each operand into its axes,
-   trace it, contract the operands against each other, and lower the result back
-   onto the output shape.  A step is emitted only when it is not the identity,
-   which is why a pure permutation comes out as a single ArrayTranspose and a
-   pure split as a single ReshapeArray.
+   The passes are the alignment core: split each operand into its axes, padding
+   it where it is shorter than they are, trace it, contract the operands against
+   each other, raise the result to a tensor power where the output repeats an
+   axis, and lower it back onto the output shape.  A step is emitted only when it
+   is not the identity, which is why a pure permutation comes out as a single
+   ArrayTranspose and a pure split as a single ReshapeArray.
 
    No operand is ever lifted into a common frame.  An axis two operands share
    and the output keeps - a batch index - is a diagonal, which a contraction
@@ -310,23 +327,43 @@ indexExecutionPlan[analysis_Association, solved_Association] :=
     Module[{
             sizes = solved["AxisSizes"], inputShapes = solved["InputShapes"], effects = analysis["Effects"],
             outFrame = analysis["OutputFrame"], outDims = First[solved["OutputShapes"]],
-            frames, dims, regs, steps = {}, next, n, traces, scalars, tensors,
+            frames, dims, actual, regs, steps = {}, next, n, traces, scalars, tensors,
             slotFrame, slotDims, batch, deltas = {}, deltaGroups = {}, fullFrame, fullDims,
-            groups, dropped, result, resultFrame, resultDims, spread, factors
+            groups, dropped, result, resultFrame, resultDims, spread, factors,
+            idSpan, sizeOf, counts, copies, base, powerGroups
         },
         frames = analysis["InputFrames"];
         n = Length[frames];
         regs = Range[n];
         next = n + 1;
         dims = Table[Lookup[sizes, frames[[k]]], {k, n}];
+        actual = Table[indexActualFrameDims[analysis["Normalized"], k, inputShapes[[k]], sizes], {k, n}];
+
+        (* A tensor power copies the axes it repeats, and a copy is numbered
+           past every axis id, so that a frame stays a list of integers and the
+           size of an entry is the size of the axis it copies. *)
+        idSpan = Max[Prepend[Keys[sizes], 0]] + 1;
+        sizeOf = Function[frame, Lookup[sizes, Mod[frame, idSpan]]];
 
         (* 1.  Split and squeeze.  One reshape does both: splitting a composite
                and dropping a unit axis each preserve the element count, and
                ReshapeArray preserves element order, so the leftmost factor of a
-               composite lands on the outermost axis. *)
+               composite lands on the outermost axis.  An operand shorter than
+               its axes, which "DimensionMismatch" -> "Pad" admits, is then padded
+               to them: an extent of 1 repeated, any other extent padded at the
+               end with 1s, which is IndexedMultiply's rule. *)
         Do[
-            If[ dims[[k]] =!= inputShapes[[k]],
-                AppendTo[steps, indexEmit["Reshape", {regs[[k]]}, next, <||>, frames[[k]], dims[[k]]]];
+            If[ actual[[k]] =!= inputShapes[[k]],
+                AppendTo[steps, indexEmit["Reshape", {regs[[k]]}, next, <||>, frames[[k]], actual[[k]]]];
+                regs[[k]] = next++
+            ];
+            If[ actual[[k]] =!= dims[[k]],
+                AppendTo[steps, indexEmit["Pad", {regs[[k]]}, next,
+                    <|
+                        "Padding" -> MapThread[{0, #1 - #2} &, {dims[[k]], actual[[k]]}],
+                        "Repeat" -> MapThread[#2 === 1 && #1 > 1 &, {dims[[k]], actual[[k]]}]
+                    |>,
+                    frames[[k]], dims[[k]]]];
                 regs[[k]] = next++
             ],
             {k, n}
@@ -361,32 +398,39 @@ indexExecutionPlan[analysis_Association, solved_Association] :=
                and two or more slots supply is a batch index, and gets a delta
                of one slot more than it has occurrences: each occurrence is
                grouped with a slot of the delta, and the last slot is free and
-               carries the axis on.  The deltas are numbered after the tensors.
-               A rank-0 operand joins the node too, contributing no slot, so a
-               scale and a contraction are one step; a set of scalars alone has
-               nothing to contract and is multiplied. *)
+               carries the axis on.  The deltas come FIRST in the node, so the
+               batch axes lead the result, which is where a batch product keeps
+               them and where the delta route computes them, and the result
+               needs no transpose to reach the common layout.  A rank-0 operand
+               joins the node too, contributing no slot, so a scale and a
+               contraction are one step; a set of scalars alone has nothing to
+               contract and is multiplied. *)
         scalars = Select[Range[n], Function[k, frames[[k]] === {}]];
         tensors = Select[Range[n], Function[k, frames[[k]] =!= {}]];
         slotFrame = Catenate[frames[[tensors]]];
         slotDims = Catenate[dims[[tensors]]];
-        batch = Select[outFrame, Function[id, Count[slotFrame, id] >= 2]];
-        fullFrame = slotFrame;
-        fullDims = slotDims;
-        Do[
-            With[{occurrences = Flatten[Position[slotFrame, id]], base = Length[fullFrame]},
-                AppendTo[deltas, ConstantArray[sizes[id], Length[occurrences] + 1]];
-                deltaGroups = Join[deltaGroups, Table[{occurrences[[i]], base + i}, {i, Length[occurrences]}]];
-                fullFrame = Join[fullFrame, ConstantArray[id, Length[occurrences] + 1]];
-                fullDims = Join[fullDims, ConstantArray[sizes[id], Length[occurrences] + 1]]
-            ],
-            {id, batch}
-        ];
-        groups = Join[
-            Map[
-                Function[id, Flatten[Position[slotFrame, id]]],
-                DeleteDuplicates[Select[slotFrame, Function[id, ! MemberQ[outFrame, id]]]]
-            ],
-            deltaGroups
+        batch = DeleteDuplicates[Select[outFrame, Function[id, Count[slotFrame, id] >= 2]]];
+        With[{offset = Total[Map[Function[id, Count[slotFrame, id] + 1], batch]]},
+            fullFrame = {};
+            fullDims = {};
+            Do[
+                With[{occurrences = Flatten[Position[slotFrame, id]], base = Length[fullFrame]},
+                    AppendTo[deltas, ConstantArray[sizes[id], Length[occurrences] + 1]];
+                    deltaGroups = Join[deltaGroups, Table[{base + i, offset + occurrences[[i]]}, {i, Length[occurrences]}]];
+                    fullFrame = Join[fullFrame, ConstantArray[id, Length[occurrences] + 1]];
+                    fullDims = Join[fullDims, ConstantArray[sizes[id], Length[occurrences] + 1]]
+                ],
+                {id, batch}
+            ];
+            fullFrame = Join[fullFrame, slotFrame];
+            fullDims = Join[fullDims, slotDims];
+            groups = Join[
+                deltaGroups,
+                Map[
+                    Function[id, offset + Flatten[Position[slotFrame, id]]],
+                    DeleteDuplicates[Select[slotFrame, Function[id, ! MemberQ[outFrame, id]]]]
+                ]
+            ]
         ];
         dropped = List /@ Sort[Catenate[groups]];
         resultFrame = Delete[fullFrame, dropped];
@@ -408,7 +452,7 @@ indexExecutionPlan[analysis_Association, solved_Association] :=
         (* 4.  Repeat the axes the output carries and no operand supplies.  This
                is genuine work: Wolfram arithmetic does not broadcast a size-1
                dimension, so the step cannot be elided. *)
-        spread = Select[outFrame, Function[id, ! MemberQ[resultFrame, id]]];
+        spread = DeleteDuplicates[Select[outFrame, Function[id, ! MemberQ[resultFrame, id]]]];
         If[ spread =!= {},
             factors = Lookup[sizes, spread];
             resultFrame = Join[resultFrame, spread];
@@ -417,15 +461,45 @@ indexExecutionPlan[analysis_Association, solved_Association] :=
             result = next++
         ];
 
-        (* 5.  Permute into the output order. *)
-        If[ resultFrame =!= outFrame,
-            AppendTo[steps, indexEmit["Transpose", {result}, next, <|"Permutation" -> indexGatherPermutation[resultFrame, outFrame]|>, outFrame, Lookup[sizes, outFrame]]];
+        (* 5.  The tensor power.  An output that names an axis more than once,
+               which "IndexMultiplicity" -> True admits, is read as a tensor power
+               of the result so far, which carries each output axis once: as many
+               copies as the most-repeated axis has occurrences, the r-th
+               occurrence of an axis read off the r-th copy, and an axis's slots
+               in the copies past its own count summed together in one group, as
+               EinsteinSummation reads it.  The copies are the one register read
+               more than once, so the rendered plan writes the result so far once
+               per copy. *)
+        If[ ! DuplicateFreeQ[outFrame],
+            counts = Counts[outFrame];
+            copies = Max[counts];
+            base = resultFrame;
+            powerGroups = DeleteCases[
+                Table[Table[(r - 1) Length[base] + p, {r, counts[base[[p]]] + 1, copies}], {p, Length[base]}],
+                {}
+            ];
+            fullFrame = Catenate[Table[base + (r - 1) idSpan, {r, copies}]];
+            fullDims = Catenate[ConstantArray[resultDims, copies]];
+            dropped = List /@ Sort[Catenate[powerGroups]];
+            resultFrame = Delete[fullFrame, dropped];
+            resultDims = Delete[fullDims, dropped];
+            AppendTo[steps, indexEmit["Contract", ConstantArray[result, copies], next, <|"Groups" -> powerGroups|>, resultFrame, resultDims]];
             result = next++;
-            resultFrame = outFrame;
-            resultDims = Lookup[sizes, outFrame]
+            outFrame = MapIndexed[
+                Function[{id, position}, id + (Count[Take[outFrame, First[position]], id] - 1) idSpan],
+                outFrame
+            ]
         ];
 
-        (* 6.  Merge the output composites and insert the output unit axes.  The
+        (* 6.  Permute into the output order. *)
+        If[ resultFrame =!= outFrame,
+            AppendTo[steps, indexEmit["Transpose", {result}, next, <|"Permutation" -> indexGatherPermutation[resultFrame, outFrame]|>, outFrame, sizeOf[outFrame]]];
+            result = next++;
+            resultFrame = outFrame;
+            resultDims = sizeOf[outFrame]
+        ];
+
+        (* 7.  Merge the output composites and insert the output unit axes.  The
                dimensions come from the solver, which multiplied each composite
                out while it was checking the operands. *)
         If[ resultDims =!= outDims,
@@ -474,7 +548,7 @@ indexDeltasQ[_] := False
 
 indexStepQ[step_Association] :=
     And[
-        MemberQ[{"Reshape", "Transpose", "Broadcast", "Multiply", "Contract"}, Lookup[step, "Step"]],
+        MemberQ[{"Reshape", "Pad", "Transpose", "Broadcast", "Multiply", "Contract"}, Lookup[step, "Step"]],
         MatchQ[Lookup[step, "Inputs"], {___Integer}],
         IntegerQ[Lookup[step, "Output"]],
         MatchQ[Lookup[step, "Frame"], {___Integer}],
@@ -483,6 +557,10 @@ indexStepQ[step_Association] :=
             "Transpose", indexPermutationQ[Lookup[step, "Permutation"]],
             "Contract", indexGroupsQ[Lookup[step, "Groups"]] && indexDeltasQ[Lookup[step, "Deltas", {}]],
             "Broadcast", indexDimensionsQ[Lookup[step, "Sizes"]] && MatchQ[Lookup[step, "Axes"], {__Integer}],
+            "Pad",
+                MatchQ[Lookup[step, "Padding"], {{0, _Integer ? NonNegative} ...}] &&
+                    MatchQ[Lookup[step, "Repeat"], {(True | False) ...}] &&
+                    Length[step["Padding"]] === Length[step["Frame"]] === Length[step["Repeat"]],
             _, True
         ]
     ]
@@ -492,7 +570,18 @@ indexStepQ[_] := False
 (* The steps and the stage they were built from are both checked, because a plan
    object is a value a caller can hold and hand back: the steps say what runs and
    the solved descriptor says what they run on, and a plan carrying one without
-   the other is declined here rather than half-executed. *)
+   the other is declined here rather than half-executed.
+
+   The check reads every step and the whole solved stage, and a call that runs a
+   prepared plan meets the plan at every stage it passes - the option check, the
+   binding check, the analysis and the plan lookup each match it - so the
+   entrance checks it once and binds it as $indexCheckedPlan for the rest of the
+   call, and the plan it bound passes at once.  The comparison is SameQ on the
+   one expression the call was handed, which answers without walking it. *)
+
+$indexCheckedPlan = None;
+
+indexPlanQ[plan_Association] /; plan === $indexCheckedPlan := True
 
 indexPlanQ[plan_Association] :=
     With[{steps = Lookup[plan, "Steps"]},

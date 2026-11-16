@@ -2,6 +2,10 @@
 *.mx
 *.paclet
 build/
+# Claude Code's local state, its worktrees among it
+.claude/
+# The development notebook
+notebooks/Arrays-Dev.nb
 # Generated documentation notebooks (docs/*.md is the source of truth)
 Arrays/Documentation/
 Arrays/ResourceDefinition.nb
